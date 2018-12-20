@@ -16,6 +16,7 @@ python _unittest_image_captioner.py
 --vocab_path /path/to/vocab.pkl
 """
 
+#python _unittest_image_captioner.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 
 def main(args):
     # Prepare an image
@@ -29,6 +30,8 @@ def main(args):
     im_captioner = ImageCaptioner(args)
     chosen_caption = "my caption"
     loss = im_captioner.forward(image_tensor, chosen_caption)
+    #print(im_captioner.caption_file(args.image))
+    #print(im_captioner.encoder(image_tensor))
     print(loss.item())
     # print(.shape)
 
