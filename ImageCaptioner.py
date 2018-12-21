@@ -23,7 +23,8 @@ class ImageCaptioner:
             self.vocab = pickle.load(f)
 
         # Build models
-        encoder = EncoderCNN(args.embed_size).eval()  # eval mode (batchnorm uses moving mean/variance)
+        # encoder = EncoderCNN(args.embed_size).eval()  # eval mode (batchnorm uses moving mean/variance)
+        encoder = EncoderCNN(args.embed_size)  # train mode (batchnorm uses moving mean/variance)
         decoder = DecoderRNN(args.embed_size, args.hidden_size, len(self.vocab), args.num_layers)
         encoder = encoder.to(device)
         decoder = decoder.to(device)
@@ -34,9 +35,6 @@ class ImageCaptioner:
 
         self.encoder = encoder
         self.decoder = decoder
-
-        self.encoder.eval()
-        self.decoder.eval()
 
         self.crit = torch.nn.CrossEntropyLoss()
 
