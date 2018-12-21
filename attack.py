@@ -121,8 +121,7 @@ class CarliniAttack:
         image = Variable(image)
         original = image
 
-        enc_logits = self.oracle.encoder(original.to(device))
-        sim_pred = decode_logits(self.oracle, enc_logits)
+        sim_pred = decode_logits(self.oracle, original.to(device))
         print("Original caption: " + sim_pred)
         self._tensor_to_PIL_im(original).show()
 
@@ -158,8 +157,7 @@ class CarliniAttack:
                 logger.debug("iteration: {}, cost: {}".format(i, cost))
             if i % 100 == 0:
                 # See how we're doing
-                enc_logits = self.oracle.encoder(pass_in.to(device))
-                sim_pred = decode_logits(self.oracle, enc_logits)
+                sim_pred = decode_logits(self.oracle, pass_in.to(device))
                 logger.debug("Decoding at iteration {}: {}".format(i, sim_pred))
                 self._tensor_to_PIL_im(pass_in).show()
 
@@ -172,58 +170,59 @@ class CarliniAttack:
         self.oracle.decoder.eval()
 
         #original image captions I assume
+        # TODO: Make usable eventually
+        # #_, original_im_pred = classify_image_pil(self.oracle, original_pil)
+        # original_im_pred = captionImage(oracle=self.oracle, image_tensor=original_pil)
+        # logger.debug("Original image caption: {}".format(original_im_pred))
+        #
+        # #apply the mask
+        # apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
+        # # apply_delta = apply_delta * whitespace_mask
+        #
+        # pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
+        # pil_attack_float = self._tensor_to_PIL_im(pass_in, mode='F')
+        # pil_mask = self._tensor_to_PIL_im(apply_delta, mode='RGBA')
+        # pil_attack_int = self._tensor_to_PIL_im(pass_in, mode='RGBA')
+        #
+        # #attack image captions
+        # _, attack_pil_classify = captionImage(oracle=self.oracle, image_tensor= pil_attack_int)
+        # logger.debug("PIL-based image classify: {}".format(attack_pil_classify))
+        #
+        # pass_in = pass_in.view(1, *pass_in.size())
+        # pass_in = interpolate(pass_in,
+        #                       size=(self.i_imH, self.i_imW),
+        #                       mode='bilinear', align_corners=True)
+        #
+        # new_attack_input = pass_in
+        #
+        # _, attack_ete_classify = captionImage(oracle=self.oracle, image_tensor= new_attack_input)
+        # logger.debug("Attacked E-t-E classify: {}".format(attack_ete_classify))
+        #
+        # # original_pil.show()
+        # # pil_attack_int.show()
+        #
+        # run_id = np.random.randint(999999)
+        # original_path = os.path.join(out_dir, 'original_{}.jpg'.format(run_id))
+        # delta_path = os.path.join(out_dir, 'delta_{}.jpg'.format(run_id))
+        # pil_attack_float_path = os.path.join(out_dir, 'attack_{}.tiff'.format(run_id))
+        # pil_attack_int_path = os.path.join(out_dir, 'attack_{}.jpg'.format(run_id))
+        # out_ckpt_path = os.path.join(out_dir, 'CTC-CRNN_{}.pt'.format(run_id))
+        #
+        # original_pil.save(original_path)
+        # pil_mask.save(delta_path)
+        # pil_attack_float.save(pil_attack_float_path)
+        # pil_attack_int.save(pil_attack_int_path)
+        #
+        # torch.save(self.oracle.state_dict(), out_ckpt_path)
+        # logger.debug("Saved to ID {}".format(run_id))
+        #
+        # pickle.dump((original_im_pred, attack_ete_classify), open(os.path.join(out_dir, 'result.pkl'), 'wb'))
 
-        #_, original_im_pred = classify_image_pil(self.oracle, original_pil)
-        original_im_pred = captionImage(oracle=self.oracle, image_tensor=original_pil)
-        logger.debug("Original image caption: {}".format(original_im_pred))
 
-        #apply the mask
-        apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
-        # apply_delta = apply_delta * whitespace_mask
+def decode_logits(oracle, image_tensor):
 
-        pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-        pil_attack_float = self._tensor_to_PIL_im(pass_in, mode='F')
-        pil_mask = self._tensor_to_PIL_im(apply_delta, mode='RGBA')
-        pil_attack_int = self._tensor_to_PIL_im(pass_in, mode='RGBA')
-
-        #attack image captions
-        _, attack_pil_classify = captionImage(oracle=self.oracle, image_tensor= pil_attack_int)
-        logger.debug("PIL-based image classify: {}".format(attack_pil_classify))
-
-        pass_in = pass_in.view(1, *pass_in.size())
-        pass_in = interpolate(pass_in,
-                              size=(self.i_imH, self.i_imW),
-                              mode='bilinear', align_corners=True)
-
-        new_attack_input = pass_in
-
-        _, attack_ete_classify = captionImage(oracle=self.oracle, image_tensor= new_attack_input)
-        logger.debug("Attacked E-t-E classify: {}".format(attack_ete_classify))
-
-        # original_pil.show()
-        # pil_attack_int.show()
-
-        run_id = np.random.randint(999999)
-        original_path = os.path.join(out_dir, 'original_{}.jpg'.format(run_id))
-        delta_path = os.path.join(out_dir, 'delta_{}.jpg'.format(run_id))
-        pil_attack_float_path = os.path.join(out_dir, 'attack_{}.tiff'.format(run_id))
-        pil_attack_int_path = os.path.join(out_dir, 'attack_{}.jpg'.format(run_id))
-        out_ckpt_path = os.path.join(out_dir, 'CTC-CRNN_{}.pt'.format(run_id))
-
-        original_pil.save(original_path)
-        pil_mask.save(delta_path)
-        pil_attack_float.save(pil_attack_float_path)
-        pil_attack_int.save(pil_attack_int_path)
-
-        torch.save(self.oracle.state_dict(), out_ckpt_path)
-        logger.debug("Saved to ID {}".format(run_id))
-
-        pickle.dump((original_im_pred, attack_ete_classify), open(os.path.join(out_dir, 'result.pkl'), 'wb'))
-
-
-def decode_logits(oracle, preds):
-
-    sampled_ids = oracle.decoder.sample(preds)
+    enc_logits = oracle.encoder(image_tensor)
+    sampled_ids = oracle.decoder.sample(enc_logits)
     sampled_ids = sampled_ids[0].cpu().numpy()  # (1, max_seq_length) -> (max_seq_length)
 
     # Convert word_ids to words
@@ -238,69 +237,56 @@ def decode_logits(oracle, preds):
     return sentence
 
 
-def image_pil_to_logits(oracle, pil_im):
-    transformer = dataset.resizeNormalize((imgW, imgH))
-    image = transformer(pil_im)
-    if torch.cuda.is_available():
-        image = image.cuda()
 
-    image = image.view(1, *image.size())
-    image = Variable(image)
-
-    preds = oracle(image)
-    return preds
-
-
-
-def captionImage(oracle, image_tensor):
-
-
-    feature = oracle.encoder(image_tensor)
-    sampled_ids = oracle.decoder.sample(feature)
-    sampled_ids = sampled_ids[0].cpu().numpy()  # (1, max_seq_length) -> (max_seq_length)
-
-    # Convert word_ids to words
-    sampled_caption = []
-    for word_id in sampled_ids:
-        word = self.vocab.idx2word[word_id]
-        sampled_caption.append(word)
-        if word == '<end>':
-            break
-    sentence = ' '.join(sampled_caption)
-
-    return sentence
+# def captionImage(oracle, image_tensor):
+#
+#
+#     feature = oracle.encoder(image_tensor)
+#     sampled_ids = oracle.decoder.sample(feature)
+#     sampled_ids = sampled_ids[0].cpu().numpy()  # (1, max_seq_length) -> (max_seq_length)
+#
+#     # Convert word_ids to words
+#     sampled_caption = []
+#     for word_id in sampled_ids:
+#         word = self.vocab.idx2word[word_id]
+#         sampled_caption.append(word)
+#         if word == '<end>':
+#             break
+#     sentence = ' '.join(sampled_caption)
+#
+#     return sentence
 
 
-def classify_image_pil(oracle, pil_im):
-    preds = image_pil_to_logits(oracle, pil_im)
+# def classify_image_pil(oracle, pil_im):
+#     preds = image_pil_to_logits(oracle, pil_im)
+#
+#     _, preds = preds.max(2)
+#
+#     preds_size = Variable(torch.IntTensor([preds.size(0)]))
+#     preds = preds.transpose(1, 0).contiguous().view(-1)
+#
+#     raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
+#     sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
+#
+#     return raw_pred, sim_pred
 
-    _, preds = preds.max(2)
-
-    preds_size = Variable(torch.IntTensor([preds.size(0)]))
-    preds = preds.transpose(1, 0).contiguous().view(-1)
-
-    raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
-    sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
-
-    return raw_pred, sim_pred
-
-
-def classify_image_tensor(oracle, tensor):
-    # imager = ToPILImage()
-    # pil_im = imager(tensor.cpu())
-
-    preds = oracle(tensor)
-    _, preds = preds.max(2)
-
-    preds_size = Variable(torch.IntTensor([preds.size(0)]))
-    preds = preds.transpose(1, 0).contiguous().view(-1)
-
-    raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
-    sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
-    #
-    return raw_pred, sim_pred
-    #
-    # return classify_image_pil(oracle, pil_im)
+#
+# def classify_image_tensor(oracle, tensor):
+#     # imager = ToPILImage()
+#     # pil_im = imager(tensor.cpu())
+#
+#     preds = oracle(tensor)
+#     _, preds = preds.max(2)
+#
+#     preds_size = Variable(torch.IntTensor([preds.size(0)]))
+#     preds = preds.transpose(1, 0).contiguous().view(-1)
+#
+#     raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
+#     sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
+#     #
+#     return raw_pred, sim_pred
+#     #
+#     # return classify_image_pil(oracle, pil_im)
 
 
 def _validate(args):
@@ -317,54 +303,54 @@ def weights_init(m):
 
 
 
-
-def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None):
-    r"""Down/up samples the input to either the given :attr:`size` or the given
-    :attr:`scale_factor`
-    Ripped from master branch of PyTorch, which is not stable yet. Just need this fn.
-    https://pytorch.org/docs/master/_modules/torch/nn/functional.html#interpolate
-    Not ideal but will work for now.
-    """
-
-    def _check_size_scale_factor(dim):
-        if size is None and scale_factor is None:
-            raise ValueError('either size or scale_factor should be defined')
-        if size is not None and scale_factor is not None:
-            raise ValueError('only one of size or scale_factor should be defined')
-        if scale_factor is not None and isinstance(scale_factor, tuple)\
-                and len(scale_factor) != dim:
-            raise ValueError('scale_factor shape must match input shape. '
-                             'Input is {}D, scale_factor size is {}'.format(dim, len(scale_factor)))
-
-    def _output_size(dim):
-        _check_size_scale_factor(dim)
-        if size is not None:
-            return size
-        scale_factors = _ntuple(dim)(scale_factor)
-        # math.floor might return float in py2.7
-        return [int(math.floor(input.size(i + 2) * scale_factors[i])) for i in range(dim)]
-
-    if mode in ('nearest', 'area'):
-        if align_corners is not None:
-            raise ValueError("align_corners option can only be set with the "
-                             "interpolating modes: linear | bilinear | trilinear")
-    else:
-        if align_corners is None:
-            warnings.warn("Default upsampling behavior when mode={} is changed "
-                          "to align_corners=False since 0.4.0. Please specify "
-                          "align_corners=True if the old behavior is desired. "
-                          "See the documentation of nn.Upsample for details.".format(mode))
-            align_corners = False
-
-    if input.dim() == 3 and mode == 'bilinear':
-        raise NotImplementedError("Got 3D input, but bilinear mode needs 4D input")
-    elif input.dim() == 4 and mode == 'bilinear':
-        return torch._C._nn.upsample_bilinear2d(input, _output_size(2), align_corners)
-    elif input.dim() == 5 and mode == 'bilinear':
-        raise NotImplementedError("Got 5D input, but bilinear mode needs 4D input")
-    elif input.dim() == 5 and mode == 'trilinear':
-        return torch._C._nn.upsample_trilinear3d(input, _output_size(3), align_corners)
-    else:
-        raise NotImplementedError("Input Error: Only 3D, 4D and 5D input Tensors supported"
-                                  " (got {}D) for the modes: nearest | linear | bilinear | trilinear"
-    " (got {})".format(input.dim(), mode))
+#
+# def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None):
+#     r"""Down/up samples the input to either the given :attr:`size` or the given
+#     :attr:`scale_factor`
+#     Ripped from master branch of PyTorch, which is not stable yet. Just need this fn.
+#     https://pytorch.org/docs/master/_modules/torch/nn/functional.html#interpolate
+#     Not ideal but will work for now.
+#     """
+#
+#     def _check_size_scale_factor(dim):
+#         if size is None and scale_factor is None:
+#             raise ValueError('either size or scale_factor should be defined')
+#         if size is not None and scale_factor is not None:
+#             raise ValueError('only one of size or scale_factor should be defined')
+#         if scale_factor is not None and isinstance(scale_factor, tuple)\
+#                 and len(scale_factor) != dim:
+#             raise ValueError('scale_factor shape must match input shape. '
+#                              'Input is {}D, scale_factor size is {}'.format(dim, len(scale_factor)))
+#
+#     def _output_size(dim):
+#         _check_size_scale_factor(dim)
+#         if size is not None:
+#             return size
+#         scale_factors = _ntuple(dim)(scale_factor)
+#         # math.floor might return float in py2.7
+#         return [int(math.floor(input.size(i + 2) * scale_factors[i])) for i in range(dim)]
+#
+#     if mode in ('nearest', 'area'):
+#         if align_corners is not None:
+#             raise ValueError("align_corners option can only be set with the "
+#                              "interpolating modes: linear | bilinear | trilinear")
+#     else:
+#         if align_corners is None:
+#             warnings.warn("Default upsampling behavior when mode={} is changed "
+#                           "to align_corners=False since 0.4.0. Please specify "
+#                           "align_corners=True if the old behavior is desired. "
+#                           "See the documentation of nn.Upsample for details.".format(mode))
+#             align_corners = False
+#
+#     if input.dim() == 3 and mode == 'bilinear':
+#         raise NotImplementedError("Got 3D input, but bilinear mode needs 4D input")
+#     elif input.dim() == 4 and mode == 'bilinear':
+#         return torch._C._nn.upsample_bilinear2d(input, _output_size(2), align_corners)
+#     elif input.dim() == 5 and mode == 'bilinear':
+#         raise NotImplementedError("Got 5D input, but bilinear mode needs 4D input")
+#     elif input.dim() == 5 and mode == 'trilinear':
+#         return torch._C._nn.upsample_trilinear3d(input, _output_size(3), align_corners)
+#     else:
+#         raise NotImplementedError("Input Error: Only 3D, 4D and 5D input Tensors supported"
+#                                   " (got {}D) for the modes: nearest | linear | bilinear | trilinear"
+#     " (got {})".format(input.dim(), mode))
