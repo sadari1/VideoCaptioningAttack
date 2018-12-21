@@ -146,7 +146,7 @@ class CarliniAttack:
 
             cost = self.oracle.forward(pass_in, self.target)
             cost = cost / bs
-            cost = cost + apply_delta.norm()
+            # cost = cost + apply_delta.norm()
 
             self.optimizer.zero_grad()
             cost.backward()
