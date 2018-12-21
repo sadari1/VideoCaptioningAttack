@@ -36,9 +36,6 @@ class ImageCaptioner:
         self.encoder = encoder
         self.decoder = decoder
 
-        # self.encoder.eval()
-        # self.decoder.eval()
-
         self.crit = torch.nn.CrossEntropyLoss()
 
     def forward(self, image_tensor, chosen_caption):

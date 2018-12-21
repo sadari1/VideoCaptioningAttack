@@ -46,7 +46,11 @@ def main(args):
     # Prepare an image
     image = load_image(args.image, transform)
     image_tensor = image.to(device)
-    
+
+    imager = transforms.ToPILImage(mode='RGB')
+    tensor = image_tensor.squeeze()
+    imager(tensor.cpu().detach()).show()
+
     # Generate an caption from the image
     feature = encoder(image_tensor)
     sampled_ids = decoder.sample(feature)

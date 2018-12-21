@@ -31,7 +31,7 @@ def main(args):
     image_tensor = image.to(device)
 
     im_captioner = ImageCaptioner(args)
-    chosen_caption = "my caption"
+    chosen_caption = "a bird sitting on a wooden table with a bird ."
     # loss = im_captioner.forward(image_tensor, chosen_caption)
 
     carlini = CarliniAttack(oracle=im_captioner, image = image, target=chosen_caption)
