@@ -42,7 +42,7 @@ class CarliniAttack:
         in future target can also be the image we want to extract target caption from)
         """
 
-        self.learning_rate = 0.05
+        self.learning_rate = 0.002
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -83,6 +83,21 @@ class CarliniAttack:
             pil_im = imager(tensor.cpu().detach())
             return pil_im
 
+    def decode_logits(self, image_tensor):
+        enc_logits = self.oracle.encoder(image_tensor)
+        sampled_ids = self.oracle.decoder.sample(enc_logits)
+        sampled_ids = sampled_ids[0].cpu().numpy()  # (1, max_seq_length) -> (max_seq_length)
+
+        # Convert word_ids to words
+        sampled_caption = []
+        for word_id in sampled_ids:
+            word = self.oracle.vocab.idx2word[word_id]
+            sampled_caption.append(word)
+            if word == '<end>':
+                break
+        sentence = ' '.join(sampled_caption)
+
+        return sentence
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
     def execute(self, image_path, out_dir):
@@ -102,26 +117,23 @@ class CarliniAttack:
         F (32-bit floating point pixels)
         '''
 
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406),
-                                 (0.229, 0.224, 0.225))])
+        # Split up transforms to mimic real attack steps
+        tensorize = transforms.ToTensor()
+        m_normalize = transforms.Normalize((0.485, 0.456, 0.406),
+                                           (0.229, 0.224, 0.225))
 
-        image = Image.open(image_path).convert('RGB')
-        image = image.resize([224, 224], Image.LANCZOS)
+        original_pil = load_image(image_path, None)
+        # original_pil.show()
 
-        original_pil = image
-        original_pil.show()
+        image_tensor = tensorize(original_pil).unsqueeze(0)
+        image_tensor = image_tensor.to(device)
 
-        image = transform(image).unsqueeze(0)
+        image_tensor = Variable(image_tensor)
+        original = image_tensor
 
-        if torch.cuda.is_available():
-            image = image.cuda()
+        # self.oracle.encoder.eval()
 
-        image = Variable(image)
-        original = image
-
-        sim_pred = decode_logits(self.oracle, original.to(device))
+        sim_pred = self.decode_logits(original)
         print("Original caption: " + sim_pred)
         self._tensor_to_PIL_im(original).show()
 
@@ -131,21 +143,23 @@ class CarliniAttack:
 
         # dc = 0.80
         dc = 1.0
+        norm_weight = 0.3
 
-        #The attack
+        # The attack
         for i in range(self.num_iterations):
 
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
             # apply_delta = apply_delta * whitespace_mask
 
             pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
+            pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)  # messy, but start of oracle preproc
 
             pass_in = pass_in.view(*pass_in.size())
             pass_in.to(device)
 
             cost = self.oracle.forward(pass_in, self.target)
             cost = cost / bs
-            # cost = cost + apply_delta.norm()
+            cost = (1 - norm_weight) * cost + norm_weight * apply_delta.norm()
 
             self.optimizer.zero_grad()
             cost.backward()
@@ -157,9 +171,10 @@ class CarliniAttack:
                 logger.debug("iteration: {}, cost: {}".format(i, cost))
             if i % 100 == 0:
                 # See how we're doing
-                sim_pred = decode_logits(self.oracle, pass_in.to(device))
+                adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
+                sim_pred = self.decode_logits(adv_sample)
                 logger.debug("Decoding at iteration {}: {}".format(i, sim_pred))
-                self._tensor_to_PIL_im(pass_in).show()
+                self._tensor_to_PIL_im(adv_sample).show()
 
                 if sim_pred == self.target:
                     # We're done
@@ -169,7 +184,7 @@ class CarliniAttack:
         self.oracle.encoder.eval()
         self.oracle.decoder.eval()
 
-        #original image captions I assume
+        # original image captions I assume
         # TODO: Make usable eventually
         # #_, original_im_pred = classify_image_pil(self.oracle, original_pil)
         # original_im_pred = captionImage(oracle=self.oracle, image_tensor=original_pil)
@@ -217,24 +232,6 @@ class CarliniAttack:
         # logger.debug("Saved to ID {}".format(run_id))
         #
         # pickle.dump((original_im_pred, attack_ete_classify), open(os.path.join(out_dir, 'result.pkl'), 'wb'))
-
-
-def decode_logits(oracle, image_tensor):
-
-    enc_logits = oracle.encoder(image_tensor)
-    sampled_ids = oracle.decoder.sample(enc_logits)
-    sampled_ids = sampled_ids[0].cpu().numpy()  # (1, max_seq_length) -> (max_seq_length)
-
-    # Convert word_ids to words
-    sampled_caption = []
-    for word_id in sampled_ids:
-        word = oracle.vocab.idx2word[word_id]
-        sampled_caption.append(word)
-        if word == '<end>':
-            break
-    sentence = ' '.join(sampled_caption)
-
-    return sentence
 
 
 
@@ -302,6 +299,14 @@ def weights_init(m):
         m.bias.data.fill_(0)
 
 
+def load_image(image_path, transform=None):
+    image = Image.open(image_path)
+    image = image.resize([224, 224], Image.LANCZOS)
+
+    if transform is not None:
+        image = transform(image).unsqueeze(0)
+
+    return image
 
 #
 # def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None):
