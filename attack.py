@@ -42,7 +42,7 @@ class CarliniAttack:
         in future target can also be the image we want to extract target caption from)
         """
 
-        self.learning_rate = 0.002
+        self.learning_rate = 0.005
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -61,6 +61,7 @@ class CarliniAttack:
         self.optimizer = optim.Adam([self.delta],
                                     lr=self.learning_rate,
                                     betas=(0.9, 0.999))
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
 
         self.target = target
 
@@ -143,7 +144,7 @@ class CarliniAttack:
 
         # dc = 0.80
         dc = 1.0
-        norm_weight = 0.3
+        norm_weight = 0.02
 
         # The attack
         for i in range(self.num_iterations):
@@ -159,11 +160,12 @@ class CarliniAttack:
 
             cost = self.oracle.forward(pass_in, self.target)
             cost = cost / bs
-            cost = (1 - norm_weight) * cost + norm_weight * apply_delta.norm()
+            cost = ((1 - norm_weight) * cost) + (norm_weight * apply_delta.norm())
 
             self.optimizer.zero_grad()
             cost.backward()
             self.optimizer.step()
+            # self.scheduler.step()
 
             # self._reset_oracle()
 
@@ -174,7 +176,9 @@ class CarliniAttack:
                 adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
                 sim_pred = self.decode_logits(adv_sample)
                 logger.debug("Decoding at iteration {}: {}".format(i, sim_pred))
-                self._tensor_to_PIL_im(adv_sample).show()
+
+                if i % 300 == 0:
+                    self._tensor_to_PIL_im(adv_sample).show()
 
                 if sim_pred == self.target:
                     # We're done
