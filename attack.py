@@ -10,18 +10,13 @@ import os
 import itertools
 import pickle
 
-#from warpctc_pytorch import CTCLoss
 from torch.autograd import Variable
 from PIL import Image
 from torchvision.transforms import ToTensor, ToPILImage
-#from carlini_attack_utils import interpolate, resizeDifferentiableNormalize
 
-import argparse
 import torch
 
 from utils import *
-from ImageCaptioner import ImageCaptioner
-from yunjey_image_captioning.build_vocab import Vocabulary
 from torchvision import transforms
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -37,58 +32,40 @@ imgH = 40
 imgW = 180
 num_hidden = 256
 
-#needs: the model, alphabet (not sure what this is), target image, weights?
-#The oracle is the model
-
 
 class CarliniAttack:
-    #def __init__(self, oracle, alphabet, image_shape, target, file_weights):
     def __init__(self, oracle, image, target):
+        """
+        :param oracle: ImageCaptioner class
+        :param image: sample image to get shape
+        :param target: target caption (for now,
+        in future target can also be the image we want to extract target caption from)
+        """
 
-        #oracle is the ImageCaptioner class, vocab_path is the path to the vocabulary, image is the image to attack, target is the target caption (for now, in future target can also be
-        #the image we want to extract target caption from)
-
-        #image = Image.open(image_path).convert('RGBA') WE ARE PASSING IN IMAGE DIRECTLY
-
-        #get image_shape from image itself
-        self.learning_rate = 0.005
+        self.learning_rate = 0.05
         # self.learning_rate = 10
-        self.num_iterations = 500
+        self.num_iterations = 50000
         # self.num_iterations = 100
-        self.batch_size = bs = 1
+        self.batch_size = 1
         self.phrase_length = len(target)
-
-        print(image.size()[2:4], end='\n')
-        #used to be image_shape, but we can just get the image size itself.
-        self.o_imW, self.o_imH = image.size()[2:4]
-        print(self.o_imH, self.o_imW)
-        self.i_imW = self.o_imW
-        self.i_imH = self.o_imH
-
         self.oracle = oracle
 
-        #Do we really need to reset oracle
-        #self.weights = file_weights
+        # self.weights = file_weights
 
         # Variable for adversarial noise, which is added to the image to perturb it
         if torch.cuda.is_available():
-            self.delta = Variable(torch.rand((1, self.o_imH, self.o_imW)).cuda(), requires_grad=True)
+            self.delta = Variable(torch.rand(image.shape).cuda(), requires_grad=True)
         else:
-            self.delta = Variable(torch.rand((1, self.o_imH, self.o_imW)), requires_grad=True)
+            self.delta = Variable(torch.rand(image.shape), requires_grad=True)
 
-        # Optimize on delta and use ctc as criterion
-        #ctcloss = CTCLoss()
         self.optimizer = optim.Adam([self.delta],
                                     lr=self.learning_rate,
                                     betas=(0.9, 0.999))
 
-        self.loss = self.oracle.forward(image, target)
-        #self.ctcloss = ctcloss
         self.target = target
-        #self.converter = utils.strLabelConverter(alphabet, attention=False)
 
-    #def _reset_oracle(self):
-    #    self.oracle.load_state_dict(self.weights)
+    def _reset_oracle(self):
+       self.oracle.load_state_dict(self.weights)
 
     def _tensor_to_PIL_im(self, tensor, mode='RGB'):
         if mode == 'F':
@@ -102,24 +79,18 @@ class CarliniAttack:
             return Image.fromarray(tensor, mode='F')
         else:
             imager = ToPILImage(mode='RGB')
+            tensor = tensor.squeeze()
             pil_im = imager(tensor.cpu().detach())
             return pil_im
 
 
-    #Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
+    # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
     def execute(self, image_path, out_dir):
-
-
-
-        #img_path = images[0]
         bs = self.batch_size
-        tensorizer = ToTensor()
-        #transformer = dataset.resizeNormalize((imgW, imgH))
 
-        #opens the image and makes it color with transparency mask. Explained here:
+        # opens the image and makes it color with transparency mask. Explained here:
 
         '''
-        
         1 (1-bit pixels, black and white, stored with one pixel per byte)
         L (8-bit pixels, black and white)
         P (8-bit pixels, mapped to any other mode using a colour palette)
@@ -129,23 +100,20 @@ class CarliniAttack:
         YCbCr (3x8-bit pixels, colour video format)
         I (32-bit signed integer pixels)
         F (32-bit floating point pixels)
-
         '''
-        transform = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Normalize((0.485, 0.456, 0.406),
-                                                             (0.229, 0.224, 0.225))])
 
-        #image = load_image(image_path, transform)
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406),
+                                 (0.229, 0.224, 0.225))])
+
         image = Image.open(image_path).convert('RGB')
         image = image.resize([224, 224], Image.LANCZOS)
 
-        image = transform(image).unsqueeze(0)
-
         original_pil = image
+        original_pil.show()
 
-        # First just convert to tensor, we need to use a differentiable resize fn later.
-       # image = tensorizer(image)
-        # image = transformer(image)
+        image = transform(image).unsqueeze(0)
 
         if torch.cuda.is_available():
             image = image.cuda()
@@ -153,84 +121,32 @@ class CarliniAttack:
         image = Variable(image)
         original = image
 
-        # Get optimizable version of target and length
-        length = Variable(torch.IntTensor(bs))
-        text = Variable(torch.IntTensor(bs * 5))  # ????????????????
-
-        #t, l = self.converter.encode(self.target)
-        #utils.loadData(length, l)
-        #utils.loadData(text, t)
+        enc_logits = self.oracle.encoder(original.to(device))
+        sim_pred = decode_logits(self.oracle, enc_logits)
+        print("Original caption: " + sim_pred)
+        self._tensor_to_PIL_im(original).show()
 
         # This controls the mask to create around the border of fonts.
         # 1.0 = mask away white pixels. ~0.7 = mask closer to font . 0.0 = mask away nothing
-        whitespace_mask = (original < 0.7).to(dtype=torch.float32)
+        # whitespace_mask = (original < 0.7).to(dtype=torch.float32)
 
-        dc = 0.75
+        # dc = 0.80
+        dc = 1.0
 
         #The attack
         for i in range(self.num_iterations):
-            # if i % 200 == 0 and i != 0:
-            #     sofar = self.delta.cpu().detach().numpy() * 255.
-            #     sofar = np.round(sofar).astype(dtype=np.int8)
-            #     sofar = sofar / 255.
-            #     self.delta = Variable(torch.tensor(sofar).float().cuda(), requires_grad=True)
-            #
-            #     self.optimizer = optim.Adam([self.delta],
-            #                                 lr=self.learning_rate,
-            #                                 betas=(0.9, 0.999))
 
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
-            apply_delta = apply_delta * whitespace_mask
+            # apply_delta = apply_delta * whitespace_mask
 
             pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
 
-            # Now we need to quantize our tensor down to 8 bit precision.
-            # If we don't, a lot of adversarial info is lost when we go from float32 to int8 (0-255, for PIL).
-            # This makes the optim converge slower but is necessary so info isn't lost during conversions
-            # pass_in = pass_in.to(dtype=torch.uint8)
-            # pass_in = pass_in.to(dtype=torch.float32)
-            # if i % 100 == 0 and i != 0:
-            #     self.delta = self._tensor_to_PIL_im(self.delta)
-            #     self.delta = tensorizer(self.delta)
-            #
-            #     if torch.cuda.is_available():
-            #         self.delta = self.delta.cuda()
-            #
-            #     self.delta = Variable(self.delta, requires_grad=True)
-
-            # pass_in = pass_in.view(1, *pass_in.size())
-
-            # Pass to differentiable resize
-            # This would work better if the model was trained with such an end to end architecture
-
-            #            pass_in = pass_in.view(1, *pass_in.size())
-
             pass_in = pass_in.view(*pass_in.size())
+            pass_in.to(device)
 
-            pass_in = interpolate(pass_in,
-                                  size=(self.i_imH, self.i_imW),
-                                  mode='bilinear', align_corners=True)
-
-            # self._tensor_to_PIL_im(pass_in[0]).show()
-
-            # Instead use our own differentiable version of PIL resizer
-            # transformer = resizeDifferentiableNormalize((imgW, imgH))
-            # image = transformer(new_input)
-            # if torch.cuda.is_available():
-            #     image = image.cuda()
-            #
-            # image = image.view(1, *image.size())
-            # image = Variable(image)
-
-
-            #Assuming the logits come from the encoder
-            logits = self.oracle.encoder(pass_in)
-
-            # Model already restored
-            preds_size = Variable(torch.IntTensor([logits.size(0)] * bs))
-
-            #cost = self.ctcloss(logits, text, preds_size, length) / bs
-            cost = self.oracle.forward(image_tensor=image.to(device), chosen_caption=self.target) / bs
+            cost = self.oracle.forward(pass_in, self.target)
+            cost = cost / bs
+            cost = cost + apply_delta.norm()
 
             self.optimizer.zero_grad()
             cost.backward()
@@ -242,15 +158,18 @@ class CarliniAttack:
                 logger.debug("iteration: {}, cost: {}".format(i, cost))
             if i % 100 == 0:
                 # See how we're doing
-                sim_pred = decode_logits(self.oracle, logits)
+                enc_logits = self.oracle.encoder(pass_in.to(device))
+                sim_pred = decode_logits(self.oracle, enc_logits)
                 logger.debug("Decoding at iteration {}: {}".format(i, sim_pred))
+                self._tensor_to_PIL_im(pass_in).show()
+
                 if sim_pred == self.target:
                     # We're done
                     logger.debug("Early stop.")
                     break
 
-        #is it encoder?
         self.oracle.encoder.eval()
+        self.oracle.decoder.eval()
 
         #original image captions I assume
 
@@ -260,7 +179,7 @@ class CarliniAttack:
 
         #apply the mask
         apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
-        apply_delta = apply_delta * whitespace_mask
+        # apply_delta = apply_delta * whitespace_mask
 
         pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
         pil_attack_float = self._tensor_to_PIL_im(pass_in, mode='F')
@@ -301,19 +220,6 @@ class CarliniAttack:
 
         pickle.dump((original_im_pred, attack_ete_classify), open(os.path.join(out_dir, 'result.pkl'), 'wb'))
 
-
-'''
-def decode_logits(preds):
-    _, preds = preds.max(2)
-
-    preds_size = Variable(torch.IntTensor([preds.size(0)]))
-    preds = preds.transpose(1, 0).contiguous().view(-1)
-
-    raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
-    sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
-
-    return raw_pred, sim_pred
-    '''
 
 def decode_logits(oracle, preds):
 

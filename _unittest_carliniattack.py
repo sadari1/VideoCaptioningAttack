@@ -32,17 +32,14 @@ def main(args):
 
     im_captioner = ImageCaptioner(args)
     chosen_caption = "my caption"
-    loss = im_captioner.forward(image_tensor, chosen_caption)
+    # loss = im_captioner.forward(image_tensor, chosen_caption)
 
     carlini = CarliniAttack(oracle=im_captioner, image = image, target=chosen_caption)
 
     carlini.execute(args.image, args.image)
 
-
-
-
     print(im_captioner.caption_file(args.image))
-    print(loss.item())
+    # print(loss.item())
     # print(.shape)
 
 
@@ -91,40 +88,40 @@ if __name__ == '__main__':
 
     main(args)
 
-
-    _validate(args)
-
-    torch.manual_seed(args.seed)
-
-    try:
-        with io.open(args.alphabet, 'r', encoding='utf-8') as myfile:
-            alphabet = myfile.read().split()
-            alphabet.append(u' ')
-            alphabet = ''.join(alphabet)
-
-        converter = utils.strLabelConverter(alphabet, attention=False)
-
-        nclass = converter.num_classes
-
-        crnn = models.crnn.CRNN(imgH, nc, nclass, num_hidden)
-        crnn.apply(weights_init)
-
-        if args.cuda:
-            crnn = crnn.cuda()
-            crnn = torch.nn.DataParallel(crnn)
-
-        logger.info("Loading pretrained model from {}".format(args.ckpt))
-        file_weights = torch.load(args.ckpt)
-
-        crnn.load_state_dict(file_weights)
-
-        print("The oracle network:", crnn)  # Logging can't print torch models :thinking:
-
-        image = Image.open(args.input[0]).convert('L')
-        attack = CarliniAttack(crnn, alphabet, image.size, args.target, file_weights)
-
-        attack.execute(args.input, args.out)
-
-    except KeyboardInterrupt:
-
-        pass
+    #
+    # _validate(args)
+    #
+    # torch.manual_seed(args.seed)
+    #
+    # try:
+    #     with io.open(args.alphabet, 'r', encoding='utf-8') as myfile:
+    #         alphabet = myfile.read().split()
+    #         alphabet.append(u' ')
+    #         alphabet = ''.join(alphabet)
+    #
+    #     converter = utils.strLabelConverter(alphabet, attention=False)
+    #
+    #     nclass = converter.num_classes
+    #
+    #     crnn = models.crnn.CRNN(imgH, nc, nclass, num_hidden)
+    #     crnn.apply(weights_init)
+    #
+    #     if args.cuda:
+    #         crnn = crnn.cuda()
+    #         crnn = torch.nn.DataParallel(crnn)
+    #
+    #     logger.info("Loading pretrained model from {}".format(args.ckpt))
+    #     file_weights = torch.load(args.ckpt)
+    #
+    #     crnn.load_state_dict(file_weights)
+    #
+    #     print("The oracle network:", crnn)  # Logging can't print torch models :thinking:
+    #
+    #     image = Image.open(args.input[0]).convert('L')
+    #     attack = CarliniAttack(crnn, alphabet, image.size, args.target, file_weights)
+    #
+    #     attack.execute(args.input, args.out)
+    #
+    # except KeyboardInterrupt:
+    #
+    #     pass
