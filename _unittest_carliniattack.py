@@ -20,6 +20,7 @@ python _unittest_image_captioner.py
 
 #python _unittest_image_captioner.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 #python _unittest_carliniattack.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
+#python _unittest_carliniattack.py --image yunjey_image_captioning/png/example2.jpeg --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 
 def main(args):
     # Prepare an image
@@ -30,15 +31,18 @@ def main(args):
     image = load_image(args.image, transform)
     image_tensor = image.to(device)
 
+    #a group of zebra standing next to each other on a sunny day .
+    #a bird sitting on a wooden table with a bird .
+
     im_captioner = ImageCaptioner(args)
     chosen_caption = "a bird sitting on a wooden table with a bird ."
     # loss = im_captioner.forward(image_tensor, chosen_caption)
+    print(im_captioner.caption_file(args.image))
 
     carlini = CarliniAttack(oracle=im_captioner, image = image, target=chosen_caption)
 
     carlini.execute(args.image, args.image)
 
-    print(im_captioner.caption_file(args.image))
     # print(loss.item())
     # print(.shape)
 

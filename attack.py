@@ -42,7 +42,7 @@ class CarliniAttack:
         in future target can also be the image we want to extract target caption from)
         """
 
-        self.learning_rate = 0.005
+        self.learning_rate = 0.2
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -54,14 +54,15 @@ class CarliniAttack:
 
         # Variable for adversarial noise, which is added to the image to perturb it
         if torch.cuda.is_available():
-            self.delta = Variable(torch.rand(image.shape).cuda(), requires_grad=True)
+            self.delta = Variable(torch.zeros(image.shape).cuda(), requires_grad=True)
         else:
-            self.delta = Variable(torch.rand(image.shape), requires_grad=True)
+            self.delta = Variable(torch.zeros(image.shape), requires_grad=True)
 
         self.optimizer = optim.Adam([self.delta],
                                     lr=self.learning_rate,
                                     betas=(0.9, 0.999))
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
+
 
         self.target = target
 
@@ -93,10 +94,14 @@ class CarliniAttack:
         sampled_caption = []
         for word_id in sampled_ids:
             word = self.oracle.vocab.idx2word[word_id]
-            sampled_caption.append(word)
+            if word == '<start>':
+                continue
             if word == '<end>':
                 break
+            sampled_caption.append(word)
         sentence = ' '.join(sampled_caption)
+
+
 
         return sentence
 
@@ -135,7 +140,8 @@ class CarliniAttack:
         # self.oracle.encoder.eval()
 
         sim_pred = self.decode_logits(original)
-        print("Original caption: " + sim_pred)
+        print("Original caption: <start> " + sim_pred + " <end>")
+        print("Target caption: " + self.target)
         self._tensor_to_PIL_im(original).show()
 
         # This controls the mask to create around the border of fonts.
@@ -146,21 +152,92 @@ class CarliniAttack:
         dc = 1.0
         norm_weight = 0.02
 
+        #c is some constant between 0 and 1
+
+        c = 0.5
         # The attack
         for i in range(self.num_iterations):
 
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
             # apply_delta = apply_delta * whitespace_mask
 
+            #This below is I + omega)
             pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-            pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)  # messy, but start of oracle preproc
+            #pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)  # messy, but start of oracle preproc
 
             pass_in = pass_in.view(*pass_in.size())
+            #pass_in = torch.clamp(pass_in, min=0.0, max=1.0)
             pass_in.to(device)
 
-            cost = self.oracle.forward(pass_in, self.target)
-            cost = cost / bs
-            cost = ((1 - norm_weight) * cost) + (norm_weight * apply_delta.norm())
+            #This below is loss()
+            #cost = self.oracle.forward(pass_in, self.target)
+            #cost = cost / bs
+            #loss(I + δ) + L2(I + δ)
+
+
+            # apply_delta.norm() is L2(I + δ)
+            #cost = ((1 - norm_weight) * cost) + (norm_weight * apply_delta.norm())
+
+            #cost = cost + apply_delta.norm()
+
+            #cost = c * cost + apply_delta.norm()
+
+            #c * loss(I + omega) + ||omega||2 2
+            # ||omega||22 = ||(I+omega) - I||22
+
+            #c * cost + apply_delta.norm())
+
+            #n = val.detach().clone().requires_grad_(True)
+
+
+            #y = np.arctanh(original.detach().cpu().clone().requires_grad_(True).numpy())
+            #y = torch.arctanh(original)
+            #y = np.arctanh(original)
+
+
+            #y = 0.5 * torch.log((1 + original) / (1 - original))
+            y = torch_arctanh(original)
+            w = torch_arctanh(pass_in) - y
+
+            #0.5 * torch.log((1 + y) / (1 - y))
+            #w = arctanh(pass_in) - y
+            #w = np.arctanh(pass_in) - y
+            #w  = 0.5 * torch.log((1 + pass_in) / (1 - pass_in)) - y
+            #w = np.arctanh(pass_in.detach().cpu().clone().requires_grad_(True).numpy()) - y
+
+            #print(w, y)
+            #passing in w + y, cancels out the -y in w, so it's just w without the - y
+            cost = self.oracle.forward((w+y).tanh(), self.target)
+
+
+            #print(cost)
+            #normterm = torch.norm((w+y).tanh() - (y).tanh())
+            #normterm = torch.norm((w+y).tanh() - y.tanh(), 2)
+
+            #print((w+y).tanh())
+            #print('-----\n\n', y.tanh(), (w+y).tanh() - y.tanh())
+            #a = (w+y).tanh() - y.tanh()
+            #normterm = (a.pow(2).sqrt()).sum()
+
+            #a = (w+y).tanh() - y.tanh()
+            #normterm = a.min() ** 2
+            #normterm = (a.pow(2).sqrt()).sum()
+
+            normterm = (w+y).tanh() - y.tanh()
+            #print(normterm, normterm.sum())
+            cost = c * cost + normterm.norm()
+
+
+            #minimize w:
+            #c * loss (tanh(w + y)) + || tanh(w + y) - tanh(y) || 2 2
+            # w = arctanh(I + omega) - y
+            # y = arctanh(I)
+
+
+            #omega is apply_delta, original is I
+
+            # artanh(y) = 0.5*(torch.log(1+y)/(1-y))
+
 
             self.optimizer.zero_grad()
             cost.backward()
@@ -169,20 +246,35 @@ class CarliniAttack:
 
             # self._reset_oracle()
 
-            if i % 10 == 0:
-                logger.debug("iteration: {}, cost: {}".format(i, cost))
+            #if i % 10 == 0:
+            logger.debug("iteration: {}, cost: {}".format(i, cost))
+            adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
+            sim_pred = self.decode_logits(adv_sample)
+
+            if sim_pred == self.target:
+                # We're done
+                logger.debug("Decoding at iteration {}: <start> {} <end>".format(i, sim_pred))
+                logger.debug("Early stop. Cost: {}".format(cost))
+                self._tensor_to_PIL_im(adv_sample).show()
+
+                break
+
+
             if i % 100 == 0:
                 # See how we're doing
-                adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-                sim_pred = self.decode_logits(adv_sample)
-                logger.debug("Decoding at iteration {}: {}".format(i, sim_pred))
+                #adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
+                #sim_pred = self.decode_logits(adv_sample)
+                logger.debug("Decoding at iteration {}: <start> {} <end>".format(i, sim_pred))
+                #print('DEBUG: \n\n', original, ' \n ', y, '\n\n', pass_in, '\n\n', w)
+                #print(torch.isnan(w), '\n\n', torch.isnan(y))
 
-                if i % 300 == 0:
-                    self._tensor_to_PIL_im(adv_sample).show()
+                #if i % 300 == 0:
 
                 if sim_pred == self.target:
                     # We're done
                     logger.debug("Early stop.")
+                    self._tensor_to_PIL_im(adv_sample).show()
+
                     break
 
         self.oracle.encoder.eval()
@@ -292,6 +384,10 @@ class CarliniAttack:
 
 def _validate(args):
     pass
+
+def torch_arctanh(x, eps=1e-6):
+    x *= (1. - eps)
+    return (torch.log((1 + x) / (1 - x))) * 0.5
 
 
 def weights_init(m):
