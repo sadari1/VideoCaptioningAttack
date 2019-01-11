@@ -22,6 +22,8 @@ python _unittest_image_captioner.py
 #python _unittest_carliniattack.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 #python _unittest_carliniattack.py --image yunjey_image_captioning/png/example2.jpeg --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 
+#python _unittest_carliniattack.py --image yunjey_image_captioning/png/example_adversarial.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
+
 def main(args):
     # Prepare an image
     transform = transforms.Compose([transforms.ToTensor(),
@@ -41,7 +43,7 @@ def main(args):
 
     carlini = CarliniAttack(oracle=im_captioner, image = image, target=chosen_caption)
 
-    carlini.execute(args.image, args.image)
+    carlini.execute(args.image)
 
     # print(loss.item())
     # print(.shape)

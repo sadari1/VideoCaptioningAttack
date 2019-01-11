@@ -41,8 +41,8 @@ class CarliniAttack:
         :param target: target caption (for now,
         in future target can also be the image we want to extract target caption from)
         """
-
-        self.learning_rate = 0.2
+        #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
+        self.learning_rate = 0.07
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -106,7 +106,7 @@ class CarliniAttack:
         return sentence
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
-    def execute(self, image_path, out_dir):
+    def execute(self, image_path):
         bs = self.batch_size
 
         # opens the image and makes it color with transparency mask. Explained here:
@@ -129,7 +129,7 @@ class CarliniAttack:
                                            (0.229, 0.224, 0.225))
 
         original_pil = load_image(image_path, None)
-        # original_pil.show()
+        #original_pil.show()
 
         image_tensor = tensorize(original_pil).unsqueeze(0)
         image_tensor = image_tensor.to(device)
@@ -154,77 +154,33 @@ class CarliniAttack:
 
         #c is some constant between 0 and 1
 
-        c = 0.5
+        #c = 0.5
+        c=0.54
         # The attack
         for i in range(self.num_iterations):
 
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
-            # apply_delta = apply_delta * whitespace_mask
 
             #This below is I + omega)
             pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-            #pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)  # messy, but start of oracle preproc
 
             pass_in = pass_in.view(*pass_in.size())
-            #pass_in = torch.clamp(pass_in, min=0.0, max=1.0)
             pass_in.to(device)
 
             #This below is loss()
-            #cost = self.oracle.forward(pass_in, self.target)
-            #cost = cost / bs
             #loss(I + δ) + L2(I + δ)
 
 
             # apply_delta.norm() is L2(I + δ)
-            #cost = ((1 - norm_weight) * cost) + (norm_weight * apply_delta.norm())
-
-            #cost = cost + apply_delta.norm()
-
-            #cost = c * cost + apply_delta.norm()
-
             #c * loss(I + omega) + ||omega||2 2
             # ||omega||22 = ||(I+omega) - I||22
 
-            #c * cost + apply_delta.norm())
-
-            #n = val.detach().clone().requires_grad_(True)
-
-
-            #y = np.arctanh(original.detach().cpu().clone().requires_grad_(True).numpy())
-            #y = torch.arctanh(original)
-            #y = np.arctanh(original)
-
-
-            #y = 0.5 * torch.log((1 + original) / (1 - original))
             y = torch_arctanh(original)
             w = torch_arctanh(pass_in) - y
 
-            #0.5 * torch.log((1 + y) / (1 - y))
-            #w = arctanh(pass_in) - y
-            #w = np.arctanh(pass_in) - y
-            #w  = 0.5 * torch.log((1 + pass_in) / (1 - pass_in)) - y
-            #w = np.arctanh(pass_in.detach().cpu().clone().requires_grad_(True).numpy()) - y
-
-            #print(w, y)
-            #passing in w + y, cancels out the -y in w, so it's just w without the - y
             cost = self.oracle.forward((w+y).tanh(), self.target)
 
-
-            #print(cost)
-            #normterm = torch.norm((w+y).tanh() - (y).tanh())
-            #normterm = torch.norm((w+y).tanh() - y.tanh(), 2)
-
-            #print((w+y).tanh())
-            #print('-----\n\n', y.tanh(), (w+y).tanh() - y.tanh())
-            #a = (w+y).tanh() - y.tanh()
-            #normterm = (a.pow(2).sqrt()).sum()
-
-            #a = (w+y).tanh() - y.tanh()
-            #normterm = a.min() ** 2
-            #normterm = (a.pow(2).sqrt()).sum()
-
             normterm = (w+y).tanh() - y.tanh()
-            #print(normterm, normterm.sum())
             cost = c * cost + normterm.norm()
 
 
@@ -236,17 +192,10 @@ class CarliniAttack:
 
             #omega is apply_delta, original is I
 
-            # artanh(y) = 0.5*(torch.log(1+y)/(1-y))
-
-
             self.optimizer.zero_grad()
             cost.backward()
             self.optimizer.step()
-            # self.scheduler.step()
 
-            # self._reset_oracle()
-
-            #if i % 10 == 0:
             logger.debug("iteration: {}, cost: {}".format(i, cost))
             adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
             sim_pred = self.decode_logits(adv_sample)
@@ -256,29 +205,33 @@ class CarliniAttack:
                 logger.debug("Decoding at iteration {}: <start> {} <end>".format(i, sim_pred))
                 logger.debug("Early stop. Cost: {}".format(cost))
                 self._tensor_to_PIL_im(adv_sample).show()
-
                 break
 
 
-            if i % 100 == 0:
+            if i % 10 == 0:
                 # See how we're doing
-                #adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-                #sim_pred = self.decode_logits(adv_sample)
                 logger.debug("Decoding at iteration {}: <start> {} <end>".format(i, sim_pred))
-                #print('DEBUG: \n\n', original, ' \n ', y, '\n\n', pass_in, '\n\n', w)
-                #print(torch.isnan(w), '\n\n', torch.isnan(y))
-
-                #if i % 300 == 0:
 
                 if sim_pred == self.target:
                     # We're done
                     logger.debug("Early stop.")
                     self._tensor_to_PIL_im(adv_sample).show()
-
                     break
 
         self.oracle.encoder.eval()
         self.oracle.decoder.eval()
+
+        print(image_path)
+        adv_image = self._tensor_to_PIL_im(adv_sample)
+        imgpath = image_path.split('/')
+        advpath = '' + imgpath[0]
+        for i in range(1, len(imgpath)-1):
+            advpath += '/%s' % imgpath[i]
+
+        print(advpath)
+        filename = imgpath[len(imgpath)-1].split('.')
+        advpath += '/%s_adversarial.%s' % (filename[0], filename[1])
+        adv_image.save(advpath)
 
         # original image captions I assume
         # TODO: Make usable eventually
