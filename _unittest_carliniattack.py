@@ -26,12 +26,12 @@ python _unittest_image_captioner.py
 
 def main(args):
     # Prepare an image
-    transform = transforms.Compose([transforms.ToTensor(),
-                                    transforms.Normalize((0.485, 0.456, 0.406),
-                                                         (0.229, 0.224, 0.225))])
+    #transform = transforms.Compose([transforms.ToTensor(),
+    #                                transforms.Normalize((0.485, 0.456, 0.406),
+    #                                                     (0.229, 0.224, 0.225))])
 
-    image = load_image(args.image, transform)
-    image_tensor = image.to(device)
+    #image = load_image(args.image, None)
+    #image_tensor = image.to(device)
 
     #a group of zebra standing next to each other on a sunny day .
     #a bird sitting on a wooden table with a bird .
@@ -41,7 +41,7 @@ def main(args):
     # loss = im_captioner.forward(image_tensor, chosen_caption)
     print(im_captioner.caption_file(args.image))
 
-    carlini = CarliniAttack(oracle=im_captioner, image = image, target=chosen_caption)
+    carlini = CarliniAttack(oracle=im_captioner, image_path = args.image, target=chosen_caption)
 
     carlini.execute(args.image)
 

@@ -34,13 +34,22 @@ num_hidden = 256
 
 
 class CarliniAttack:
-    def __init__(self, oracle, image, target):
+    def __init__(self, oracle, image_path, target):
         """
         :param oracle: ImageCaptioner class
         :param image: sample image to get shape
         :param target: target caption (for now,
         in future target can also be the image we want to extract target caption from)
         """
+
+        tensorize = transforms.ToTensor()
+        original_pil = Image.open(image_path)
+        image_tensor = tensorize(original_pil).unsqueeze(0)
+        image_tensor = image_tensor.to(device)
+        image_tensor = Variable(image_tensor)
+        original = image_tensor
+
+
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
         self.learning_rate = 0.07
         # self.learning_rate = 10
@@ -54,15 +63,15 @@ class CarliniAttack:
 
         # Variable for adversarial noise, which is added to the image to perturb it
         if torch.cuda.is_available():
-            self.delta = Variable(torch.zeros(image.shape).cuda(), requires_grad=True)
+            self.delta = Variable(torch.zeros(original.shape).cuda(), requires_grad=True)
         else:
-            self.delta = Variable(torch.zeros(image.shape), requires_grad=True)
+            self.delta = Variable(torch.zeros(original.shape), requires_grad=True)
 
         self.optimizer = optim.Adam([self.delta],
                                     lr=self.learning_rate,
                                     betas=(0.9, 0.999))
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
-
+        self.input_shape = (224, 224)
 
         self.target = target
 
@@ -107,7 +116,21 @@ class CarliniAttack:
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
     def execute(self, image_path):
-        bs = self.batch_size
+        #bs = self.batch_size
+        # Split up transforms to mimic real attack steps
+        tensorize = transforms.ToTensor()
+        m_normalize = transforms.Normalize((0.485, 0.456, 0.406),
+                                           (0.229, 0.224, 0.225))
+        original_i = load_image(image_path, reshape=False)
+        original_i.show()
+        original_i = original_i.resize([224, 224], Image.LANCZOS)
+
+        image_tensor = tensorize(original_i).unsqueeze(0)
+        image_tensor = image_tensor.to(device)
+        image_tensor = Variable(image_tensor)
+        sim_pred = self.decode_logits(image_tensor)
+        print("Original caption: <start> " + sim_pred + " <end>")
+        print("Target caption: " + self.target)
 
         # opens the image and makes it color with transparency mask. Explained here:
 
@@ -123,30 +146,12 @@ class CarliniAttack:
         F (32-bit floating point pixels)
         '''
 
-        # Split up transforms to mimic real attack steps
-        tensorize = transforms.ToTensor()
-        m_normalize = transforms.Normalize((0.485, 0.456, 0.406),
-                                           (0.229, 0.224, 0.225))
-
-        original_pil = load_image(image_path, None)
         #original_pil.show()
-
+        original_pil = Image.open(image_path)
         image_tensor = tensorize(original_pil).unsqueeze(0)
         image_tensor = image_tensor.to(device)
-
         image_tensor = Variable(image_tensor)
         original = image_tensor
-
-        # self.oracle.encoder.eval()
-
-        sim_pred = self.decode_logits(original)
-        print("Original caption: <start> " + sim_pred + " <end>")
-        print("Target caption: " + self.target)
-        self._tensor_to_PIL_im(original).show()
-
-        # This controls the mask to create around the border of fonts.
-        # 1.0 = mask away white pixels. ~0.7 = mask closer to font . 0.0 = mask away nothing
-        # whitespace_mask = (original < 0.7).to(dtype=torch.float32)
 
         # dc = 0.80
         dc = 1.0
@@ -163,7 +168,9 @@ class CarliniAttack:
 
             #This below is I + omega)
             pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-
+            pass_in = torch.nn.functional.interpolate(pass_in, size=self.input_shape, mode='bilinear')
+            #pass_in = torch.nn.functional.interpolate(pass_in, self.input_shape, 'trilinear')
+            # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
             pass_in = pass_in.view(*pass_in.size())
             pass_in.to(device)
 
@@ -175,11 +182,10 @@ class CarliniAttack:
             #c * loss(I + omega) + ||omega||2 2
             # ||omega||22 = ||(I+omega) - I||22
 
-            y = torch_arctanh(original)
+            cost = self.oracle.forward(pass_in, self.target)
+
+            y = torch_arctanh(torch.nn.functional.interpolate(original, size=self.input_shape, mode='bilinear'))
             w = torch_arctanh(pass_in) - y
-
-            cost = self.oracle.forward((w+y).tanh(), self.target)
-
             normterm = (w+y).tanh() - y.tanh()
             cost = c * cost + normterm.norm()
 
@@ -198,7 +204,7 @@ class CarliniAttack:
 
             logger.debug("iteration: {}, cost: {}".format(i, cost))
             adv_sample = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-            sim_pred = self.decode_logits(adv_sample)
+            sim_pred = self.decode_logits(pass_in)
 
             if sim_pred == self.target:
                 # We're done
@@ -218,6 +224,10 @@ class CarliniAttack:
                     self._tensor_to_PIL_im(adv_sample).show()
                     break
 
+            if i % 100 == 0:
+                self._tensor_to_PIL_im(adv_sample).show()
+
+
         self.oracle.encoder.eval()
         self.oracle.decoder.eval()
 
@@ -232,55 +242,7 @@ class CarliniAttack:
         filename = imgpath[len(imgpath)-1].split('.')
         advpath += '/%s_adversarial.%s' % (filename[0], filename[1])
         adv_image.save(advpath)
-
-        # original image captions I assume
-        # TODO: Make usable eventually
-        # #_, original_im_pred = classify_image_pil(self.oracle, original_pil)
-        # original_im_pred = captionImage(oracle=self.oracle, image_tensor=original_pil)
-        # logger.debug("Original image caption: {}".format(original_im_pred))
-        #
-        # #apply the mask
-        # apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
-        # # apply_delta = apply_delta * whitespace_mask
-        #
-        # pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-        # pil_attack_float = self._tensor_to_PIL_im(pass_in, mode='F')
-        # pil_mask = self._tensor_to_PIL_im(apply_delta, mode='RGBA')
-        # pil_attack_int = self._tensor_to_PIL_im(pass_in, mode='RGBA')
-        #
-        # #attack image captions
-        # _, attack_pil_classify = captionImage(oracle=self.oracle, image_tensor= pil_attack_int)
-        # logger.debug("PIL-based image classify: {}".format(attack_pil_classify))
-        #
-        # pass_in = pass_in.view(1, *pass_in.size())
-        # pass_in = interpolate(pass_in,
-        #                       size=(self.i_imH, self.i_imW),
-        #                       mode='bilinear', align_corners=True)
-        #
-        # new_attack_input = pass_in
-        #
-        # _, attack_ete_classify = captionImage(oracle=self.oracle, image_tensor= new_attack_input)
-        # logger.debug("Attacked E-t-E classify: {}".format(attack_ete_classify))
-        #
-        # # original_pil.show()
-        # # pil_attack_int.show()
-        #
-        # run_id = np.random.randint(999999)
-        # original_path = os.path.join(out_dir, 'original_{}.jpg'.format(run_id))
-        # delta_path = os.path.join(out_dir, 'delta_{}.jpg'.format(run_id))
-        # pil_attack_float_path = os.path.join(out_dir, 'attack_{}.tiff'.format(run_id))
-        # pil_attack_int_path = os.path.join(out_dir, 'attack_{}.jpg'.format(run_id))
-        # out_ckpt_path = os.path.join(out_dir, 'CTC-CRNN_{}.pt'.format(run_id))
-        #
-        # original_pil.save(original_path)
-        # pil_mask.save(delta_path)
-        # pil_attack_float.save(pil_attack_float_path)
-        # pil_attack_int.save(pil_attack_int_path)
-        #
-        # torch.save(self.oracle.state_dict(), out_ckpt_path)
-        # logger.debug("Saved to ID {}".format(run_id))
-        #
-        # pickle.dump((original_im_pred, attack_ete_classify), open(os.path.join(out_dir, 'result.pkl'), 'wb'))
+        print(advpath)
 
 
 
@@ -350,16 +312,6 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
-
-
-def load_image(image_path, transform=None):
-    image = Image.open(image_path)
-    image = image.resize([224, 224], Image.LANCZOS)
-
-    if transform is not None:
-        image = transform(image).unsqueeze(0)
-
-    return image
 
 #
 # def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None):

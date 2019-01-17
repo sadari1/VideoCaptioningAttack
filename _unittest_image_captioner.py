@@ -29,10 +29,10 @@ def main(args):
 
     im_captioner = ImageCaptioner(args)
     chosen_caption = "my caption"
-    loss = im_captioner.forward(image_tensor, chosen_caption)
+    # loss = im_captioner.forward(image_tensor, chosen_caption)
     print(im_captioner.caption_file(args.image))
    # print(im_captioner.encoder(image_tensor))
-    print(loss.item())
+   #  print(loss.item())
     # print(.shape)
 
 
