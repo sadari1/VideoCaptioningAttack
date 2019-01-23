@@ -23,12 +23,7 @@ class CarliniAttack:
         in future target can also be the image we want to extract target caption from)
         """
 
-        tensorize = transforms.ToTensor()
-        original_pil = Image.open(image_path)
-        image_tensor = tensorize(original_pil).unsqueeze(0)
-        image_tensor = image_tensor.to(device)
-        image_tensor = Variable(image_tensor)
-        original = image_tensor
+        original = PIL_to_image(image_path)
 
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
         self.learning_rate = 0.07
@@ -121,12 +116,7 @@ class CarliniAttack:
         F (32-bit floating point pixels)
         '''
 
-        #original_pil.show()
-        original_pil = Image.open(image_path)
-        image_tensor = tensorize(original_pil).unsqueeze(0)
-        image_tensor = image_tensor.to(device)
-        image_tensor = Variable(image_tensor)
-        original = image_tensor
+        original = PIL_to_image(image_path)
 
         # dc = 0.80
         dc = 1.0
@@ -140,10 +130,8 @@ class CarliniAttack:
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
 
             #The perturbation is applied to the original and resized through interpolation
-            pass_in = torch.clamp(apply_delta + original, min=0.0, max=1.0)
-            pass_in = torch.nn.functional.interpolate(pass_in, size=self.input_shape, mode='bilinear')
-            # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
-            pass_in = pass_in.view(*pass_in.size())
+
+            pass_in = Apply_Delta(apply_delta, original, self.input_shape)
             pass_in.to(device)
 
             #cost calculated with the adversarial image
@@ -159,7 +147,6 @@ class CarliniAttack:
             self.optimizer.zero_grad()
             cost.backward()
             self.optimizer.step()
-
 
             #Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
             logger.debug("iteration: {}, cost: {}".format(i, cost))
@@ -207,6 +194,22 @@ class CarliniAttack:
         advpath += '/%s_adversarial.%s' % (filename[0], filename[1])
         adv_image.save(advpath)
         print(advpath)
+
+def Apply_Delta(delta, original, input_shape):
+    pass_in = torch.clamp(delta + original, min=0.0, max=1.0)
+    pass_in = torch.nn.functional.interpolate(pass_in, size=input_shape, mode='bilinear')
+    # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
+    pass_in = pass_in.view(*pass_in.size())
+    return pass_in
+
+def PIL_to_image(image_path):
+    tensorize = transforms.ToTensor()
+    original_pil = Image.open(image_path)
+    image_tensor = tensorize(original_pil).unsqueeze(0)
+    image_tensor = image_tensor.to(device)
+    image_tensor = Variable(image_tensor)
+    return image_tensor
+
 
 def _validate(args):
     pass

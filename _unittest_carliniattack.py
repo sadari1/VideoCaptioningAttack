@@ -1,6 +1,10 @@
 import argparse
 import torch
+
+from utils import *
 from ImageCaptioner import ImageCaptioner
+from yunjey_image_captioning.build_vocab import Vocabulary
+from torchvision import transforms
 
 from attack import CarliniAttack
 
@@ -26,7 +30,6 @@ def main(args):
     #a train is traveling down a track next to a forest .
     #a group of zebra standing next to each other on a sunny day .
     #a bird sitting on a wooden table with a bird .
-
     im_captioner = ImageCaptioner(args)
     chosen_caption = "a train is traveling down a track next to a forest ."
     # loss = im_captioner.forward(image_tensor, chosen_caption)
@@ -55,3 +58,8 @@ if __name__ == '__main__':
     parser.add_argument('--embed_size', type=int, default=256, help='dimension of word embedding vectors')
     parser.add_argument('--hidden_size', type=int, default=512, help='dimension of lstm hidden states')
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers in lstm')
+
+
+    args = parser.parse_args()
+    main(args)
+
