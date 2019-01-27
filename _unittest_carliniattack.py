@@ -31,7 +31,7 @@ def main(args):
     #a group of zebra standing next to each other on a sunny day .
     #a bird sitting on a wooden table with a bird .
     im_captioner = ImageCaptioner(args)
-    chosen_caption = "a train is traveling down a track next to a forest ."
+    chosen_caption = "a bird sitting on a wooden table with a bird ."
     # loss = im_captioner.forward(image_tensor, chosen_caption)
     print(im_captioner.caption_file(args.image))
 

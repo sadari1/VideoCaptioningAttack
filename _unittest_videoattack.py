@@ -73,7 +73,7 @@ def main(opt):
     #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
     target_caption = 'A boy is kicking a soccer ball into the goal'
 
-    carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption)
+    carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, vocab=vocab)
 
     carlini.execute(video_path, vocab = vocab)
 

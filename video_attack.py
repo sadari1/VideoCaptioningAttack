@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 class CarliniAttack:
-    def __init__(self, oracle, video_path, target):
+    def __init__(self, oracle, video_path, target, vocab):
         """
         :param oracle: ImageCaptioner class
         :param image: sample image to get shape
@@ -45,7 +45,7 @@ class CarliniAttack:
         self.batch_size = 1
         self.phrase_length = len(target)
         self.oracle = oracle
-
+        self.vocab = vocab
         # Variable for adversarial noise, which is added to the image to perturb it
         # Starts as an empty mask so noise will be added onto it
         if torch.cuda.is_available():
@@ -59,7 +59,8 @@ class CarliniAttack:
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
         self.input_shape = (299, 299)
         self.target = target
-
+        del(frames)
+        torch.cuda.empty_cache()
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
     def execute(self, video_path, vocab):
@@ -83,7 +84,8 @@ class CarliniAttack:
         print('Target caption: ' + self.target)
 
         #all the frames are stored in batches. Batches[0] should contain the first 32 frames.
-
+        del(batches)
+        torch.cuda.empty_cache()
         #batches = batches.float().cuda()
         # dc = 0.80
         dc = 1.0
@@ -100,14 +102,17 @@ class CarliniAttack:
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
 
             #The perturbation is applied to the original and resized through interpolation
-
-            modified = Apply_Delta(apply_delta, original[0:32], self.input_shape)
             pass_in = original
+            #pass_in = torch.nn.functional.interpolate(original, size=self.input_shape, mode='bilinear')
+            # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
+            modified = torch.clamp(apply_delta + pass_in[0:32], min = 0.0, max = 1.0)
             pass_in[0:32] = modified
+            pass_in = pass_in.view(*pass_in.size())
             pass_in.to(device)
 
+            cost = loss(self.oracle, pass_in, self.target, self.vocab)
             #cost calculated with the adversarial image
-            cost = self.oracle.forward(pass_in, self.target)
+            #cost = self.oracle.forward(pass_in, self.target)
 
 
             #w and y make calculations more efficient and are used to calculate the l2 norm
@@ -154,7 +159,8 @@ class CarliniAttack:
 
             #Every 500 iterations it outputs an image with the perturbation applied.
             if i % 500 == 0:
-                self._tensor_to_PIL_im(adv_sample).show()
+                plt.imshow(frames[30])
+                plt.show()
 
 
         self.oracle.encoder.eval()
@@ -175,12 +181,6 @@ class CarliniAttack:
         adv_image.save(advpath)
         print(advpath)
 
-def Apply_Delta(delta, original, input_shape):
-    pass_in = torch.clamp(delta + original, min=0.0, max=1.0)
-    #pass_in = torch.nn.functional.interpolate(pass_in, size=input_shape, mode='bilinear')
-    # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
-    pass_in = pass_in.view(*pass_in.size())
-    return pass_in
 
 def PIL_to_image(image_path):
     tensorize = transforms.ToTensor()
@@ -197,34 +197,20 @@ def torch_arctanh(x, eps=1e-6):
     return (torch.log((1 + x) / (1 - x))) * 0.5
 
 
-def create_batches(frames_to_do, tf_img_fn, batch_size=32):
+def create_batches(frames_to_do,  batch_size=32):
     n = frames_to_do.shape[0]
+
     if n < batch_size:
         logger.warning("Sample size less than batch size: Cutting batch size.")
         batch_size = n
 
     logger.info("Generating {} batches...".format(n // batch_size))
     batches = []
-    #frames_to_do = np.array(frames_to_do)
 
-    for idx in range(0, n, batch_size):
-        frames_idx = list(range(idx, min(idx+batch_size, n)))
-        batch_frames = frames_to_do[frames_idx]
+    for idx in range (0, n, batch_size):
+        frames_idx = list(range(idx, min(idx + batch_size, n)))
+        batches.append(frames_to_do[frames_idx])
 
-        batch_tensor = torch.zeros((batch_frames.shape[0],) + tuple(tf_img_fn.input_size))
-        #for i, frame_ in enumerate(batch_frames):
-            #input_img = load_img_fn(frame_)
-            #input_tensor = tf_img_fn(input_img)  # 3x400x225 -> 3x299x299 size may differ
-            # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
-
-        input_tensor = torch.nn.functional.interpolate(batch_tensor, size=(299, 299), mode='bilinear')
-            #batch_tensor[i] = input_tensor
-
-        #batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
-        batches.append(input_tensor)
-
-    plt.imshow(batches[0][30].numpy() / 255.0)
-    plt.show()
     return batches
 
 def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=32):
@@ -252,3 +238,35 @@ def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=32):
         batches.append(batch_ag)
 
     return batches
+
+def to_contiguous(tensor):
+    if tensor.is_contiguous():
+        return tensor
+    else:
+        return tensor.contiguous()
+
+
+def loss(oracle, pass_in, target, vocab):
+    #pass_in want to find seq_preds aka logits
+    batches = create_batches(pass_in)
+    seq_prob, seq_preds = oracle(batches, mode='inference')
+
+    caption = []
+    caption.extend([vocab(token) for token in target.split(' ')])
+    caption = torch.Tensor(caption)
+
+    lengths = [len(cap) for cap in caption]
+    targets = torch.zeros(len(caption), max(lengths)).long()
+    for i, cap in enumerate(caption):
+        end = lengths[i]
+        targets[i, :end] = cap[:end]
+
+
+
+
+    loss_fn = nn.NLLLoss(reduce=False)
+
+    logits = to_contiguous(seq_preds).view(-1, seq_preds.shape[2])
+    loss =loss_fn(logits, targets)
+
+    return loss
