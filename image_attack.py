@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
+
 class CarliniAttack:
     def __init__(self, oracle, image_path, target):
         """

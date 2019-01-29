@@ -6,7 +6,7 @@ from ImageCaptioner import ImageCaptioner
 from yunjey_image_captioning.build_vocab import Vocabulary
 from torchvision import transforms
 
-from attack import CarliniAttack
+from image_attack import CarliniAttack
 
 import json
 import os

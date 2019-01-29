@@ -6,7 +6,7 @@ from ImageCaptioner import ImageCaptioner
 from yunjey_image_captioning.build_vocab import Vocabulary
 from torchvision import transforms
 
-from attack import CarliniAttack
+from image_attack import CarliniAttack
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -19,10 +19,10 @@ python _unittest_image_captioner.py
 """
 
 #python _unittest_image_captioner.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
-#python _unittest_carliniattack.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
-#python _unittest_carliniattack.py --image yunjey_image_captioning/png/example2.jpeg --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
+#python _unittest_image_attack.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
+#python _unittest_image_attack.py --image yunjey_image_captioning/png/example2.jpeg --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 
-#python _unittest_carliniattack.py --image yunjey_image_captioning/png/example_adversarial.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
+#python _unittest_image_attack.py --image yunjey_image_captioning/png/example_adversarial.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 
 def main(args):
 

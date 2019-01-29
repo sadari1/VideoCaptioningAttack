@@ -1,12 +1,4 @@
-import argparse
-import torch
-
 from utils import *
-from ImageCaptioner import ImageCaptioner
-from yunjey_image_captioning.build_vocab import Vocabulary
-from torchvision import transforms
-
-from attack import CarliniAttack
 
 import json
 import os
@@ -65,17 +57,16 @@ def main(opt):
 
 
     convnet = 'nasnetalarge'
-    vocab = dataset.get_vocab()
     full_decoder = ConvS2VT(convnet, model, opt)
 
     #'A woman is cutting a green onion'
     video_path = opt['videos'][0]
     #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
-    target_caption = 'A boy is kicking a soccer ball into the goal'
+    target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
-    carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, vocab=vocab)
+    carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
 
-    carlini.execute(video_path, vocab = vocab)
+    carlini.execute(video_path)
 
 
 if __name__ == '__main__':

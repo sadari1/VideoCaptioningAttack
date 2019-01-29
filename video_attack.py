@@ -17,8 +17,6 @@ from pretrainedmodels import utils as ptm_utils
 from video_caption_pytorch.models.ConvS2VT import ConvS2VT
 from video_caption_pytorch.misc import utils as utils
 
-
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 logging.basicConfig()
@@ -26,8 +24,11 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
+BATCH_SIZE = 16
+
+
 class CarliniAttack:
-    def __init__(self, oracle, video_path, target, vocab):
+    def __init__(self, oracle, video_path, target, dataset):
         """
         :param oracle: ImageCaptioner class
         :param image: sample image to get shape
@@ -35,8 +36,8 @@ class CarliniAttack:
         in future target can also be the image we want to extract target caption from)
         """
 
-        frames = skvideo.io.vread(video_path)[0:32]
-        frames = torch.tensor(frames).float().cuda()
+        frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
+        # frames = torch.tensor(frames).float().cuda()
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
         self.learning_rate = 0.07
         # self.learning_rate = 10
@@ -45,11 +46,13 @@ class CarliniAttack:
         self.batch_size = 1
         self.phrase_length = len(target)
         self.oracle = oracle
-        self.vocab = vocab
+        self.dataset = dataset
+        self.vocab = dataset.get_vocab()
         # Variable for adversarial noise, which is added to the image to perturb it
         # Starts as an empty mask so noise will be added onto it
         if torch.cuda.is_available():
-            self.delta = Variable(torch.zeros(frames.shape).cuda(), requires_grad=True)
+            #TODO
+            self.delta = Variable(torch.zeros(frames.shape), requires_grad=True)
         else:
             self.delta = Variable(torch.zeros(frames.shape), requires_grad=True)
 
@@ -59,40 +62,89 @@ class CarliniAttack:
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
         self.input_shape = (299, 299)
         self.target = target
+
+        self.tlabel, self.tmask = self.produce_t_mask()
+
         del(frames)
         torch.cuda.empty_cache()
 
-    # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
-    def execute(self, video_path, vocab):
+    def produce_t_mask(self):
+        mask = torch.zeros(self.dataset.max_len)
+        captions = [self.target.split(' ')]
+        gts = torch.zeros(len(captions), self.dataset.max_len).long()
+        for i, cap in enumerate(captions):
+            if len(cap) > self.dataset.max_len:
+                cap = cap[:self.dataset.max_len]
+                cap[-1] = '<eos>'
+            for j, w in enumerate(cap):
+                gts[i, j] = self.dataset.word_to_ix[w]
 
+        label = gts[0]
+        non_zero = (label == 0).nonzero()
+        mask[:int(non_zero[0]) + 1] = 1
+
+        return label.unsqueeze(0), mask.unsqueeze(0)
+
+    def loss(self, pass_in):
         tf_img_fn = ptm_utils.TransformImage(self.oracle.conv)
         load_img_fn = PIL.Image.fromarray
 
-        print(video_path)
-        with torch.no_grad():
-            frames = skvideo.io.vread(video_path)
-            plt.imshow(frames[30])
-            plt.show()
+        # pass_in want to find seq_preds aka logits
+        batches = create_batches(pass_in, tf_img_fn, load_img_fn)
+        feats = self.oracle.conv_forward(batches)
+        seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
 
+        # caption = []
+        # caption.extend([vocab(token) for token in target.split(' ')])
+        # caption = torch.Tensor(caption)
+        #
+        # lengths = [len(cap) for cap in caption]
+        # targets = torch.zeros(len(caption), max(lengths)).long()
+        # for i, cap in enumerate(caption):
+        #     end = lengths[i]
+        #     targets[i, :end] = cap[:end]
+
+        crit = utils.LanguageModelCriterion()
+        loss = crit(seq_prob.unsqueeze(0), self.tlabel[:, 1:].cuda(), self.tmask[:, 1:].cuda())
+        # loss_fn = nn.NLLLoss(reduce=False)
+        #
+        # logits = to_contiguous(seq_preds).view(-1, seq_preds.shape[2])
+        # loss =loss_fn(logits, targets)
+
+        return loss
+
+    # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
+    def execute(self, video_path):
+
+        tf_img_fn = ptm_utils.TransformImage(self.oracle.conv)
+        conv_shape = tf_img_fn.input_size
+        load_img_fn = PIL.Image.fromarray
+
+        print(video_path)
+        frames = skvideo.io.vread(video_path)[:BATCH_SIZE]
+        # plt.imshow(frames[0])
+        # plt.show()
+
+        with torch.no_grad():
             # bp ---
-            batches = o_create_batches(frames, load_img_fn, tf_img_fn)
-            seq_prob, seq_preds = self.oracle(batches, mode='inference')
-            sents = utils.decode_sequence(vocab, seq_preds)
+            o_batches = o_create_batches(frames, load_img_fn, tf_img_fn)
+            seq_prob, seq_preds = self.oracle(o_batches, mode='inference')
+            sents = utils.decode_sequence(self.vocab, seq_preds)
 
             for sent in sents:
                 print('Original caption: ' + sent)
+
         print('Target caption: ' + self.target)
 
         #all the frames are stored in batches. Batches[0] should contain the first 32 frames.
-        del(batches)
         torch.cuda.empty_cache()
         #batches = batches.float().cuda()
         # dc = 0.80
-        dc = 1.0
+        dc = 10.0
         #c is some constant between 0 and 1
 
-        original = torch.tensor(frames).float().cuda()
-
+        # original = torch.tensor(frames).float().cuda()
+        original = torch.tensor(frames)
 
         #c = 0.5
         c=0.54
@@ -102,15 +154,17 @@ class CarliniAttack:
             apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
 
             #The perturbation is applied to the original and resized through interpolation
-            pass_in = original
+            # pass_in = original.cuda()
+            pass_in = original.float()
+            s = pass_in.shape
             #pass_in = torch.nn.functional.interpolate(original, size=self.input_shape, mode='bilinear')
             # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
-            modified = torch.clamp(apply_delta + pass_in[0:32], min = 0.0, max = 1.0)
-            pass_in[0:32] = modified
-            pass_in = pass_in.view(*pass_in.size())
-            pass_in.to(device)
+            pass_in = torch.clamp(apply_delta + pass_in, min=0, max =255)
+            # pass_in = torch.nn.functional.interpolate(pass_in.view(s[0], s[3], s[1], s[2]), size=tuple(conv_shape)[1:], mode='bilinear')
+            # pass_in = pass_in.view(*pass_in.size())
+            # pass_in.to(device)
 
-            cost = loss(self.oracle, pass_in, self.target, self.vocab)
+            cost = self.loss(pass_in)
             #cost calculated with the adversarial image
             #cost = self.oracle.forward(pass_in, self.target)
 
@@ -129,9 +183,9 @@ class CarliniAttack:
             #Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
             logger.debug("iteration: {}, cost: {}".format(i, cost))
             adv_sample = torch.clamp(apply_delta + frames, min=0.0, max=1.0)
-            batches = create_batches(adv_sample, tf_img_fn)
+            batches = create_batches(adv_sample)
             seq_prob, seq_preds = self.oracle(batches, mode='inference')
-            sents = utils.decode_sequence(vocab, seq_preds)
+            sents = utils.decode_sequence(self.vocab, seq_preds)
 
             #print(sents[0])
 
@@ -197,7 +251,7 @@ def torch_arctanh(x, eps=1e-6):
     return (torch.log((1 + x) / (1 - x))) * 0.5
 
 
-def create_batches(frames_to_do,  batch_size=32):
+def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE):
     n = frames_to_do.shape[0]
 
     if n < batch_size:
@@ -209,11 +263,23 @@ def create_batches(frames_to_do,  batch_size=32):
 
     for idx in range (0, n, batch_size):
         frames_idx = list(range(idx, min(idx + batch_size, n)))
-        batches.append(frames_to_do[frames_idx])
+
+        batch_frames = frames_to_do[frames_idx]
+        batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
+        for i, frame_ in enumerate(batch_frames):
+            inp = load_image_fn(frame_.detach().numpy().astype(np.uint8))
+            input_tensor = tf_img_fn(inp)  # 3x400x225 -> 3x299x299 size may differ
+            # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
+            batch_tensor[i] = input_tensor
+        # batches.append(frames_to_do[frames_idx])
+
+        batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
+        batches.append(batch_ag)
 
     return batches
 
-def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=32):
+
+def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=BATCH_SIZE):
     n = len(frames_to_do)
     if n < batch_size:
         logger.warning("Sample size less than batch size: Cutting batch size.")
@@ -244,29 +310,3 @@ def to_contiguous(tensor):
         return tensor
     else:
         return tensor.contiguous()
-
-
-def loss(oracle, pass_in, target, vocab):
-    #pass_in want to find seq_preds aka logits
-    batches = create_batches(pass_in)
-    seq_prob, seq_preds = oracle(batches, mode='inference')
-
-    caption = []
-    caption.extend([vocab(token) for token in target.split(' ')])
-    caption = torch.Tensor(caption)
-
-    lengths = [len(cap) for cap in caption]
-    targets = torch.zeros(len(caption), max(lengths)).long()
-    for i, cap in enumerate(caption):
-        end = lengths[i]
-        targets[i, :end] = cap[:end]
-
-
-
-
-    loss_fn = nn.NLLLoss(reduce=False)
-
-    logits = to_contiguous(seq_preds).view(-1, seq_preds.shape[2])
-    loss =loss_fn(logits, targets)
-
-    return loss
