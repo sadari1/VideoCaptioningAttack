@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 
 
 class CarliniAttack:
@@ -52,7 +52,7 @@ class CarliniAttack:
         # Starts as an empty mask so noise will be added onto it
         if torch.cuda.is_available():
             #TODO
-            self.delta = Variable(torch.zeros(frames.shape), requires_grad=True)
+            self.delta = Variable(torch.zeros(frames.shape).cuda(), requires_grad=True)
         else:
             self.delta = Variable(torch.zeros(frames.shape), requires_grad=True)
 
@@ -155,11 +155,12 @@ class CarliniAttack:
 
             #The perturbation is applied to the original and resized through interpolation
             # pass_in = original.cuda()
-            pass_in = original.float()
+            pass_in = original.float().cuda()
             s = pass_in.shape
             #pass_in = torch.nn.functional.interpolate(original, size=self.input_shape, mode='bilinear')
             # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
             pass_in = torch.clamp(apply_delta + pass_in, min=0, max =255)
+            pass_in = pass_in.cpu()
             # pass_in = torch.nn.functional.interpolate(pass_in.view(s[0], s[3], s[1], s[2]), size=tuple(conv_shape)[1:], mode='bilinear')
             # pass_in = pass_in.view(*pass_in.size())
             # pass_in.to(device)
@@ -170,9 +171,10 @@ class CarliniAttack:
 
 
             #w and y make calculations more efficient and are used to calculate the l2 norm
-            y = torch_arctanh(torch.nn.functional.interpolate(pass_in, size=self.input_shape, mode='bilinear'))
+            # y = torch_arctanh(torch.nn.functional.interpolate(pass_in, size=self.input_shape, mode='bilinear'))
+            y = torch_arctanh(original.float())
             w = torch_arctanh(pass_in) - y
-            normterm = (w+y).tanh() - y.tanh()
+            normterm = ((w+y).tanh() - y.tanh()).cuda()
             cost = c * cost + normterm.norm()
 
             #calculate gradients
@@ -182,8 +184,8 @@ class CarliniAttack:
 
             #Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
             logger.debug("iteration: {}, cost: {}".format(i, cost))
-            adv_sample = torch.clamp(apply_delta + frames, min=0.0, max=1.0)
-            batches = create_batches(adv_sample)
+            adv_sample = torch.clamp(apply_delta + original.float().cuda(), min=0, max=255)
+            batches = create_batches(adv_sample, tf_img_fn, load_img_fn)
             seq_prob, seq_preds = self.oracle(batches, mode='inference')
             sents = utils.decode_sequence(self.vocab, seq_preds)
 
@@ -267,7 +269,7 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
         batch_frames = frames_to_do[frames_idx]
         batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
         for i, frame_ in enumerate(batch_frames):
-            inp = load_image_fn(frame_.detach().numpy().astype(np.uint8))
+            inp = load_image_fn(frame_.detach().cpu().numpy().astype(np.uint8))
             input_tensor = tf_img_fn(inp)  # 3x400x225 -> 3x299x299 size may differ
             # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
             batch_tensor[i] = input_tensor
