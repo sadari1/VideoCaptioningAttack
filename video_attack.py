@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 
 
 class CarliniAttack:
@@ -140,27 +140,27 @@ class CarliniAttack:
         torch.cuda.empty_cache()
         #batches = batches.float().cuda()
         # dc = 0.80
-        dc = 10.0
+        dc = 50.0
         #c is some constant between 0 and 1
 
         # original = torch.tensor(frames).float().cuda()
         original = torch.tensor(frames)
 
         #c = 0.5
-        c=0.54
+        c = 0.7
         # The attack
         for i in range(self.num_iterations):
 
-            apply_delta = torch.clamp(self.delta, min=-dc, max=dc)
+            apply_delta = torch.clamp(self.delta * 300., min=-dc, max=dc)
+            print("Norm: {}".format(apply_delta.norm()))
 
             #The perturbation is applied to the original and resized through interpolation
             # pass_in = original.cuda()
-            pass_in = original.float().cuda()
+            pass_in = (original.float()).cuda()
             s = pass_in.shape
             #pass_in = torch.nn.functional.interpolate(original, size=self.input_shape, mode='bilinear')
             # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
             pass_in = torch.clamp(apply_delta + pass_in, min=0, max =255)
-            pass_in = pass_in.cpu()
             # pass_in = torch.nn.functional.interpolate(pass_in.view(s[0], s[3], s[1], s[2]), size=tuple(conv_shape)[1:], mode='bilinear')
             # pass_in = pass_in.view(*pass_in.size())
             # pass_in.to(device)
@@ -172,22 +172,30 @@ class CarliniAttack:
 
             #w and y make calculations more efficient and are used to calculate the l2 norm
             # y = torch_arctanh(torch.nn.functional.interpolate(pass_in, size=self.input_shape, mode='bilinear'))
-            y = torch_arctanh(original.float())
-            w = torch_arctanh(pass_in) - y
-            normterm = ((w+y).tanh() - y.tanh()).cuda()
-            cost = c * cost + normterm.norm()
 
-            #calculate gradients
+            y = torch_arctanh(original.float()/255.).cuda()
+            w = torch_arctanh(pass_in/255.) - y
+            normterm = ((w+y).tanh() - y.tanh())
+            cost = c * cost + normterm.mean(0).norm()
+
+            cost = cost * 255.
+            #calculate gradientsA
             self.optimizer.zero_grad()
             cost.backward()
             self.optimizer.step()
 
             #Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
-            logger.debug("iteration: {}, cost: {}".format(i, cost))
+            logger.debug("\niteration: {}, cost: {}".format(i, cost))
+            torch.cuda.empty_cache()
+
             adv_sample = torch.clamp(apply_delta + original.float().cuda(), min=0, max=255)
+            torch.cuda.empty_cache()
+
             batches = create_batches(adv_sample, tf_img_fn, load_img_fn)
-            seq_prob, seq_preds = self.oracle(batches, mode='inference')
+            feats = self.oracle.conv_forward(batches)
+            seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
             sents = utils.decode_sequence(self.vocab, seq_preds)
+            logger.debug("Decoding at iteration {}: {} ".format(i, sents[0]))
 
             #print(sents[0])
 
@@ -197,26 +205,23 @@ class CarliniAttack:
                 # We're done
                 logger.debug("Decoding at iteration {}:  {} ".format(i, sents[0]))
                 logger.debug("Early stop. Cost: {}".format(cost))
-                plt.imshow(frames[30]/255.0)
+                plt.imshow(adv_sample[0].detach() / 255)
                 plt.show()
                 break
 
             #Every 10 iterations it outputs the caption.
             if i % 10 == 0:
                 # See how we're doing
-                logger.debug("Decoding at iteration {}: {} ".format(i, sents[0]))
-
-                if sents[0] == self.target:
-                    # We're done
-                    logger.debug("Early stop.")
-                    plt.imshow(frames[30])
-                    plt.show()
-                    break
+                plt.imshow(adv_sample[0].detach() / 255.)
+                plt.show()
+                plt.close()
+                plt.imshow(apply_delta[0].detach() / 255.)
+                plt.show()
 
             #Every 500 iterations it outputs an image with the perturbation applied.
-            if i % 500 == 0:
-                plt.imshow(frames[30])
-                plt.show()
+            # if i % 10 == 0:
+            #     plt.imshow(adv_sample[0])
+            #     plt.show()
 
 
         self.oracle.encoder.eval()
