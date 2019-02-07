@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import torch
 import torch.optim as optim
@@ -9,6 +10,7 @@ from utils import *
 import skvideo.io
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import torchvision.transforms as transforms
 import PIL
 from pretrainedmodels import utils as ptm_utils
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
@@ -151,7 +153,7 @@ class CarliniAttack:
         # The attack
         for i in range(self.num_iterations):
 
-            apply_delta = torch.clamp(self.delta * 300., min=-dc, max=dc)
+            apply_delta = torch.clamp(self.delta * 100., min=-dc, max=dc)
             print("Norm: {}".format(apply_delta.norm()))
 
             #The perturbation is applied to the original and resized through interpolation
@@ -191,7 +193,24 @@ class CarliniAttack:
             adv_sample = torch.clamp(apply_delta + original.float().cuda(), min=0, max=255)
             torch.cuda.empty_cache()
 
+            o_batches = o_create_batches(adv_sample.detach().cpu().numpy().astype(np.uint8), load_img_fn, tf_img_fn)
             batches = create_batches(adv_sample, tf_img_fn, load_img_fn)
+
+            plt.imshow(o_batches[0].reshape(
+                o_batches[0].shape[0],
+                o_batches[0].shape[2],
+                o_batches[0].shape[3],
+                o_batches[0].shape[1]
+            )[0])
+            plt.show()
+
+            plt.imshow(batches[0].detach().cpu().numpy().reshape(
+                batches[0].shape[0],
+                batches[0].shape[2],
+                batches[0].shape[3],
+                batches[0].shape[1]
+            )[0])
+            plt.show()
             feats = self.oracle.conv_forward(batches)
             seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
             sents = utils.decode_sequence(self.vocab, seq_preds)
@@ -252,6 +271,29 @@ def PIL_to_image(image_path):
     return image_tensor
 
 
+class ToSpaceBGR(object):
+
+    def __init__(self, is_bgr):
+        self.is_bgr = is_bgr
+
+    def __call__(self, tensor):
+        if self.is_bgr:
+            new_tensor = tensor.clone()
+            new_tensor[0] = tensor[2]
+            new_tensor[2] = tensor[0]
+            tensor = new_tensor
+        return tensor
+
+
+class ToRange255(object):
+
+    def __init__(self, is_255):
+        self.is_255 = is_255
+
+    def __call__(self, tensor):
+        if self.is_255:
+            tensor.mul_(255)
+        return tensor
 
 def torch_arctanh(x, eps=1e-6):
     x *= (1. - eps)
@@ -260,6 +302,30 @@ def torch_arctanh(x, eps=1e-6):
 
 def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE):
     n = frames_to_do.shape[0]
+    h, w = frames_to_do.shape[1:3]
+    scale = 0.875
+    input_size = [3, 331, 331]
+    mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+    input_range = [0,1.]
+    input_space='RGB'
+    expand_size = int(math.floor(max(input_size) / scale))
+    if w < h:
+        ow = expand_size
+        oh = int(expand_size * h / w)
+    else:
+        oh = expand_size
+        ow = int(expand_size * w / h)
+
+    tfs = []
+    tfs.append(ToSpaceBGR(input_space == 'BGR'))
+    tfs.append(ToRange255(max(input_range) == 255))
+    tfs.append(transforms.Normalize(mean=mean, std=std))
+    tf = transforms.Compose(tfs)
+
+    a = int((0.5 * oh) - (0.5 * float(input_size[1])))
+    b = a + input_size[1]
+    c = int((0.5 * ow) - (0.5 * float(input_size[2])))
+    d = c + input_size[2]
 
     if n < batch_size:
         logger.warning("Sample size less than batch size: Cutting batch size.")
@@ -271,17 +337,32 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
     for idx in range (0, n, batch_size):
         frames_idx = list(range(idx, min(idx + batch_size, n)))
 
-        batch_frames = frames_to_do[frames_idx]
-        batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
-        for i, frame_ in enumerate(batch_frames):
-            inp = load_image_fn(frame_.detach().cpu().numpy().astype(np.uint8))
-            input_tensor = tf_img_fn(inp)  # 3x400x225 -> 3x299x299 size may differ
+        batch_tensor = frames_to_do[frames_idx]
+        # batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
+        # for i, frame_ in enumerate(batch_frames):
+        #     inp = inp.unsqueeze(0)
+        inp = torch.nn.functional.interpolate(batch_tensor.view(batch_tensor.shape[0],
+                                                                batch_tensor.shape[3],
+                                                                batch_tensor.shape[1],
+                                                                batch_tensor.shape[2]),
+                                              size=(oh, ow),
+                                              mode='bilinear')
+
+        cropped_image = inp[:, :, a:b, c:d]
+        cropped_image = cropped_image.transpose(0, 1).transpose(0, 2).contiguous()
+        for i in range(len(cropped_image)):
+            cropped_image[i] = tf(cropped_image[i] / 255.)
+
+
+            # inp = inp.squeeze(0)
+            # inp = load_image_fn(frame_.detach().cpu().numpy().astype(np.uint8))
+            # input_tensor = tf_img_fn(inp)  # 3x400x225 -> 3x299x299 size may differ
             # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
-            batch_tensor[i] = input_tensor
+            # batch_tensor[i] = inp
         # batches.append(frames_to_do[frames_idx])
 
-        batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
-        batches.append(batch_ag)
+        # batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
+        batches.append(cropped_image)
 
     return batches
 
