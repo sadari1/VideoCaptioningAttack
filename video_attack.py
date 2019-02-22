@@ -195,22 +195,22 @@ class CarliniAttack:
 
             o_batches = o_create_batches(adv_sample.detach().cpu().numpy().astype(np.uint8), load_img_fn, tf_img_fn)
             batches = create_batches(adv_sample, tf_img_fn, load_img_fn)
+            if i % 10 == 0:
+                plt.imshow(o_batches[0].reshape(
+                    o_batches[0].shape[0],
+                    o_batches[0].shape[2],
+                    o_batches[0].shape[3],
+                    o_batches[0].shape[1]
+                )[0])
+                plt.show()
 
-            plt.imshow(o_batches[0].reshape(
-                o_batches[0].shape[0],
-                o_batches[0].shape[2],
-                o_batches[0].shape[3],
-                o_batches[0].shape[1]
-            )[0])
-            plt.show()
-
-            plt.imshow(batches[0].detach().cpu().numpy().reshape(
-                batches[0].shape[0],
-                batches[0].shape[2],
-                batches[0].shape[3],
-                batches[0].shape[1]
-            )[0])
-            plt.show()
+                plt.imshow(batches[0].detach().cpu().numpy().reshape(
+                    batches[0].shape[0],
+                    batches[0].shape[2],
+                    batches[0].shape[3],
+                    batches[0].shape[1]
+                )[0])
+                plt.show()
             feats = self.oracle.conv_forward(batches)
             seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
             sents = utils.decode_sequence(self.vocab, seq_preds)
@@ -320,6 +320,7 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
     tfs.append(ToSpaceBGR(input_space == 'BGR'))
     tfs.append(ToRange255(max(input_range) == 255))
     tfs.append(transforms.Normalize(mean=mean, std=std))
+    # tfs.append(transforms.ToTensor)
     tf = transforms.Compose(tfs)
 
     a = int((0.5 * oh) - (0.5 * float(input_size[1])))
@@ -348,11 +349,23 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
                                               size=(oh, ow),
                                               mode='bilinear')
 
+        #Center cropping
         cropped_image = inp[:, :, a:b, c:d]
-        cropped_image = cropped_image.transpose(0, 1).transpose(0, 2).contiguous()
+        # cropped_image = cropped_image.contiguous()
         for i in range(len(cropped_image)):
-            cropped_image[i] = tf(cropped_image[i] / 255.)
 
+            ## Compare this code with that in line 81 of functional.py in torchvision/transforms.
+            #Runs line 70, goes to 78 and runs until 83.
+            cropped_image[i] = (tf(cropped_image[i]))
+            cropped_image[i] = cropped_image[i].contiguous().float().div(255)
+
+            # img = img.transpose(0, 1).transpose(0, 2).contiguous()
+            # img = torch.ByteTensor(torch.ByteStorage.from_buffer(pic.tobytes()))
+            # img = img.view(pic.size[1], pic.size[0], nchannel)
+            # # put it from HWC to CHW format
+            # # yikes, this transpose takes 80% of the loading time/CPU
+            # img = img.transpose(0, 1).transpose(0, 2).contiguous()
+            # img.float().div(255)
 
             # inp = inp.squeeze(0)
             # inp = load_image_fn(frame_.detach().cpu().numpy().astype(np.uint8))
