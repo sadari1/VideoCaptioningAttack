@@ -338,16 +338,32 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
     for idx in range (0, n, batch_size):
         frames_idx = list(range(idx, min(idx + batch_size, n)))
 
+        import matplotlib.pyplot as plt
+
+        def plt_tensor(batched_t):
+            showing = batched_t[0]
+            if batched_t.shape[-1] == 3:
+                plt.imshow(showing.detach().cpu().numpy())
+            else:
+                plt.imshow(showing.reshape(*showing.shape[1:], 3).detach().cpu().numpy())
+            plt.show()
+
+        # <batch, h, w, ch> <0,255>
         batch_tensor = frames_to_do[frames_idx]
+
+        # plt_tensor(batch_tensor / 255.)
+
         # batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
         # for i, frame_ in enumerate(batch_frames):
         #     inp = inp.unsqueeze(0)
-        inp = torch.nn.functional.interpolate(batch_tensor.view(batch_tensor.shape[0],
-                                                                batch_tensor.shape[3],
-                                                                batch_tensor.shape[1],
-                                                                batch_tensor.shape[2]),
+
+        # mini-batch x channels x [optional depth] x [optional height] x width
+        sh = batch_tensor.shape
+        pass_in = batch_tensor.view(sh[0], sh[3], sh[1], sh[2]) / 255.
+        inp = torch.nn.functional.interpolate(pass_in,
                                               size=(oh, ow),
-                                              mode='bilinear')
+                                              mode='bilinear', align_corners=True)
+        inp = inp * 255.
 
         #Center cropping
         cropped_image = inp[:, :, a:b, c:d]
@@ -356,8 +372,9 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
 
             ## Compare this code with that in line 81 of functional.py in torchvision/transforms.
             #Runs line 70, goes to 78 and runs until 83.
-            cropped_image[i] = (tf(cropped_image[i]))
-            cropped_image[i] = cropped_image[i].contiguous().float().div(255)
+
+            cropped_image[i] = cropped_image[i].reshape(331, 331, 3).transpose(0, 1).transpose(0, 2).contiguous()
+            cropped_image[i] = tf(cropped_image[i])
 
             # img = img.transpose(0, 1).transpose(0, 2).contiguous()
             # img = torch.ByteTensor(torch.ByteStorage.from_buffer(pic.tobytes()))
@@ -377,7 +394,7 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
         # batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
         batches.append(cropped_image)
 
-    return batches
+    return batches[0]
 
 
 def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=BATCH_SIZE):
