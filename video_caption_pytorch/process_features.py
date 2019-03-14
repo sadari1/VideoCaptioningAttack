@@ -133,9 +133,9 @@ def process_batches(batches, ftype, gpu_list, model):
 
     # #TODO:
     # with torch.no_grad():
-    torch.cuda.empty_cache()
+    # torch.cuda.empty_cache()
     output_features = model.features(batches[0].cuda())
-    output_features = output_features.data.cpu()
+    # output_features = output_features.data.cpu()
 
     conv_size = output_features.shape[-1]
 
@@ -148,12 +148,10 @@ def process_batches(batches, ftype, gpu_list, model):
         avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
         out_feats = avg_pool(output_features)
 
-    out_feats = out_feats.view(out_feats.size(0), -1)
+    out_feats = out_feats.view(out_feats.size(0), -1).cuda()
     # logger.info('Processed {}/{} batches.\r'.format('''i''', 0 + 1, len(batches)))
 
-    done_batches.append(out_feats)
-    feats = np.concatenate(done_batches, axis=0)
-    return feats
+    return out_feats
 
 
 def create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=32):

@@ -33,20 +33,20 @@ class ConvS2VT(nn.Module):
             seq_prob: Variable of shape [batch_size, max_len-1, vocab_size]
             seq_preds: [] or Variable of shape [batch_size, max_len-1]
         """
-        feats = process_batches(frame_batches, self.conv_name, [0], self.conv)
+        vid_feats = process_batches(frame_batches, self.conv_name, [0], self.conv)
+        vid_feats = vid_feats.unsqueeze(0)
         # TODO: Batch n videos and feed
-        feats = np.array([feats])
-        vid_feats = torch.from_numpy(feats).to(self.device)
         seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt)
         return seq_probs, seq_preds
 
     def conv_forward(self, frame_batches):
         feats = process_batches(frame_batches, self.conv_name, [0], self.conv)
-        feats = np.array([feats])
+        # feats = np.array([feats])
+        feats = feats.unsqueeze(0)
 
         return feats
 
     def encoder_decoder_forward(self, vid_feats, target_variable=None, mode='train', opt={}):
-        vid_feats = torch.from_numpy(vid_feats).to(self.device)
+        # vid_feats = torch.from_numpy(vid_feats).to(self.device)
         seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt)
         return seq_probs, seq_preds

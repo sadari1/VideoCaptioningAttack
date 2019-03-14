@@ -53,9 +53,9 @@ class CarliniAttack:
         # Starts as an empty mask so noise will be added onto it
         if torch.cuda.is_available():
             #TODO
-            self.delta = Variable(torch.rand(frames.shape).cuda(), requires_grad=True)
+            self.delta = Variable(torch.zeros(frames.shape).cuda(), requires_grad=True)
         else:
-            self.delta = Variable(torch.rand(frames.shape), requires_grad=True)
+            self.delta = Variable(torch.zeros(frames.shape), requires_grad=True)
 
         self.optimizer = optim.Adam([self.delta],
                                     lr=self.learning_rate,
@@ -117,7 +117,7 @@ class CarliniAttack:
         # all the frames are stored in batches. Batches[0] should contain the first 32 frames.
         torch.cuda.empty_cache()
         # dc = 0.80
-        dc = 50
+        dc = 20
 
         c = 2.0
         # The attack
