@@ -40,7 +40,7 @@ class CarliniAttack:
 
         frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
-        self.learning_rate = 0.02
+        self.learning_rate = 0.1
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
