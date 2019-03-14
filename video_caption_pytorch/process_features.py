@@ -149,7 +149,7 @@ def process_batches(batches, ftype, gpu_list, model):
         out_feats = avg_pool(output_features)
 
     out_feats = out_feats.view(out_feats.size(0), -1)
-    logger.info('Processed {}/{} batches.\r'.format('''i''', 0 + 1, len(batches)))
+    # logger.info('Processed {}/{} batches.\r'.format('''i''', 0 + 1, len(batches)))
 
     done_batches.append(out_feats)
     feats = np.concatenate(done_batches, axis=0)

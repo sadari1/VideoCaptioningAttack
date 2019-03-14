@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
-BATCH_SIZE = 2
+BATCH_SIZE = 4
 
 
 class CarliniAttack:
@@ -39,9 +39,8 @@ class CarliniAttack:
         """
 
         frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
-        # frames = torch.tensor(frames).float().cuda()
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
-        self.learning_rate = 0.07
+        self.learning_rate = 0.02
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -54,13 +53,16 @@ class CarliniAttack:
         # Starts as an empty mask so noise will be added onto it
         if torch.cuda.is_available():
             #TODO
-            self.delta = Variable(torch.zeros(frames.shape).cuda(), requires_grad=True)
+            self.delta = Variable(torch.rand(frames.shape).cuda(), requires_grad=True)
         else:
-            self.delta = Variable(torch.zeros(frames.shape), requires_grad=True)
+            self.delta = Variable(torch.rand(frames.shape), requires_grad=True)
 
         self.optimizer = optim.Adam([self.delta],
                                     lr=self.learning_rate,
                                     betas=(0.9, 0.999))
+
+        self.crit = utils.LanguageModelCriterion()
+
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
         self.input_shape = (299, 299)
         self.target = target
@@ -87,50 +89,24 @@ class CarliniAttack:
 
         return label.unsqueeze(0), mask.unsqueeze(0)
 
-    def loss(self, pass_in):
-        tf_img_fn = ptm_utils.TransformImage(self.oracle.conv)
-        load_img_fn = PIL.Image.fromarray
-
-        # pass_in want to find seq_preds aka logits
-        batches = create_batches(pass_in, tf_img_fn, load_img_fn)
-        feats = self.oracle.conv_forward(batches)
-        seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
-
-        # caption = []
-        # caption.extend([vocab(token) for token in target.split(' ')])
-        # caption = torch.Tensor(caption)
-        #
-        # lengths = [len(cap) for cap in caption]
-        # targets = torch.zeros(len(caption), max(lengths)).long()
-        # for i, cap in enumerate(caption):
-        #     end = lengths[i]
-        #     targets[i, :end] = cap[:end]
-
-        crit = utils.LanguageModelCriterion()
-        loss = crit(seq_prob.unsqueeze(0), self.tlabel[:, 1:].cuda(), self.tmask[:, 1:].cuda())
-        # loss_fn = nn.NLLLoss(reduce=False)
-        #
-        # logits = to_contiguous(seq_preds).view(-1, seq_preds.shape[2])
-        # loss =loss_fn(logits, targets)
-
+    def loss(self, seq_prob):
+        loss = self.crit(seq_prob.unsqueeze(0), self.tlabel[:, 1:].cuda(), self.tmask[:, 1:].cuda())
         return loss
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
     def execute(self, video_path):
 
-        tf_img_fn = ptm_utils.TransformImage(self.oracle.conv)
-        conv_shape = tf_img_fn.input_size
-        load_img_fn = PIL.Image.fromarray
-
         print(video_path)
         frames = skvideo.io.vread(video_path)[:BATCH_SIZE]
         # plt.imshow(frames[0])
         # plt.show()
+        original = torch.tensor(frames)
+        original = (original.float()).cuda()
 
         with torch.no_grad():
             # bp ---
-            o_batches = o_create_batches(frames, load_img_fn, tf_img_fn)
-            seq_prob, seq_preds = self.oracle(o_batches, mode='inference')
+            batch = create_batches(original)
+            seq_prob, seq_preds = self.oracle(batch.unsqueeze(0), mode='inference')
             sents = utils.decode_sequence(self.vocab, seq_preds)
 
             for sent in sents:
@@ -138,110 +114,59 @@ class CarliniAttack:
 
         print('Target caption: ' + self.target)
 
-        #all the frames are stored in batches. Batches[0] should contain the first 32 frames.
+        # all the frames are stored in batches. Batches[0] should contain the first 32 frames.
         torch.cuda.empty_cache()
-        #batches = batches.float().cuda()
         # dc = 0.80
-        dc = 50.0
-        #c is some constant between 0 and 1
+        dc = 50
 
-        # original = torch.tensor(frames).float().cuda()
-        original = torch.tensor(frames)
-
-        #c = 0.5
-        c = 0.7
+        c = 2.0
         # The attack
         for i in range(self.num_iterations):
 
-            apply_delta = torch.clamp(self.delta * 100., min=-dc, max=dc)
-            print("Norm: {}".format(apply_delta.norm()))
+            apply_delta = torch.clamp(self.delta * 255., min=-dc, max=dc)
 
-            #The perturbation is applied to the original and resized through interpolation
-            # pass_in = original.cuda()
-            pass_in = (original.float()).cuda()
-            s = pass_in.shape
-            #pass_in = torch.nn.functional.interpolate(original, size=self.input_shape, mode='bilinear')
-            # pass_in = m_normalize(pass_in.squeeze()).unsqueeze(0)
-            pass_in = torch.clamp(apply_delta + pass_in, min=0, max =255)
-            # pass_in = torch.nn.functional.interpolate(pass_in.view(s[0], s[3], s[1], s[2]), size=tuple(conv_shape)[1:], mode='bilinear')
-            # pass_in = pass_in.view(*pass_in.size())
-            # pass_in.to(device)
+            # The perturbation is applied to the original and resized through interpolation
+            pass_in = torch.clamp(apply_delta + original, min=0, max =255)
 
-            cost = self.loss(pass_in)
-            #cost calculated with the adversarial image
-            #cost = self.oracle.forward(pass_in, self.target)
+            batch = create_batches(pass_in)
+            feats = self.oracle.conv_forward(batch.unsqueeze(0))
+            seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
 
+            cost = self.loss(seq_prob)
+            print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
 
-            #w and y make calculations more efficient and are used to calculate the l2 norm
-            # y = torch_arctanh(torch.nn.functional.interpolate(pass_in, size=self.input_shape, mode='bilinear'))
-
-            y = torch_arctanh(original.float()/255.).cuda()
-            w = torch_arctanh(pass_in/255.) - y
+            # w and y make calculations more efficient and are used to calculate the l2 norm
+            y = torch_arctanh(original / 255.).cuda()
+            w = torch_arctanh(pass_in / 255.) - y
             normterm = ((w+y).tanh() - y.tanh())
-            cost = c * cost + normterm.mean(0).norm()
+            # cost = (c * cost.tanh() + 1) + ((1 - c) * normterm.mean(0).norm().tanh() + 1)
+            cost = cost + normterm.mean(0).norm()
 
-            cost = cost * 255.
-            #calculate gradientsA
+            # cost = cost * 255.s
+
+            # calculate gradients
             self.optimizer.zero_grad()
             cost.backward()
             self.optimizer.step()
 
-            #Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
-            logger.debug("\niteration: {}, cost: {}".format(i, cost))
-            torch.cuda.empty_cache()
+            # Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
+            logger.debug("\nIteration: {}, cost: {}".format(i, cost))
+            # torch.cuda.empty_cache()
 
-            adv_sample = torch.clamp(apply_delta + original.float().cuda(), min=0, max=255)
-            torch.cuda.empty_cache()
-
-            o_batches = o_create_batches(adv_sample.detach().cpu().numpy().astype(np.uint8), load_img_fn, tf_img_fn)
-            batches = create_batches(adv_sample, tf_img_fn, load_img_fn)
-            if i % 10 == 0:
-                plt.imshow(o_batches[0].reshape(
-                    o_batches[0].shape[0],
-                    o_batches[0].shape[2],
-                    o_batches[0].shape[3],
-                    o_batches[0].shape[1]
-                )[0])
-                plt.show()
-
-                plt.imshow(batches[0].detach().cpu().numpy().reshape(
-                    batches[0].shape[0],
-                    batches[0].shape[2],
-                    batches[0].shape[3],
-                    batches[0].shape[1]
-                )[0])
-                plt.show()
-            feats = self.oracle.conv_forward(batches)
-            seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
-            sents = utils.decode_sequence(self.vocab, seq_preds)
-            logger.debug("Decoding at iteration {}: {} ".format(i, sents[0]))
-
-            #print(sents[0])
-
-
-            #Every iteration it checks for whether or not the target caption equals the original
+            # Every iteration it checks for whether or not the target caption equals the original
             if sents[0] == self.target:
                 # We're done
-                logger.debug("Decoding at iteration {}:  {} ".format(i, sents[0]))
+                logger.debug("Decoding at iteration {}:\t{} ".format(i, sents[0]))
                 logger.debug("Early stop. Cost: {}".format(cost))
-                plt.imshow(adv_sample[0].detach() / 255)
-                plt.show()
+                plt_tensor(pass_in / 255.)
                 break
 
-            #Every 10 iterations it outputs the caption.
+            # Every 10 iterations it outputs the caption.
             if i % 10 == 0:
                 # See how we're doing
-                plt.imshow(adv_sample[0].detach() / 255.)
-                plt.show()
-                plt.close()
-                plt.imshow(apply_delta[0].detach() / 255.)
-                plt.show()
-
-            #Every 500 iterations it outputs an image with the perturbation applied.
-            # if i % 10 == 0:
-            #     plt.imshow(adv_sample[0])
-            #     plt.show()
-
+                plt_tensor(pass_in / 255.)
+                sents = utils.decode_sequence(self.vocab, seq_preds)
+                logger.info("Decoding at iteration {}: {} ".format(i, sents[0]))
 
         self.oracle.encoder.eval()
         self.oracle.decoder.eval()
@@ -249,7 +174,7 @@ class CarliniAttack:
 
         #Once everything is done, it will save the adversarial image by appending _adversarial to the original target file's name and uses its format.
         print(video_path)
-        adv_image = self._tensor_to_PIL_im(adv_sample)
+        adv_image = self._tensor_to_PIL_im(pass_in)
         imgpath = video_path.split('/')
         advpath = '' + imgpath[0]
         for i in range(1, len(imgpath)-1):
@@ -295,12 +220,27 @@ class ToRange255(object):
             tensor.mul_(255)
         return tensor
 
+
 def torch_arctanh(x, eps=1e-6):
     x *= (1. - eps)
     return (torch.log((1 + x) / (1 - x))) * 0.5
 
 
-def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE):
+import matplotlib.pyplot as plt
+
+
+def plt_tensor(batched_t):
+    showing = batched_t[0]
+    if batched_t.shape[-1] == 3:
+        showing = showing.detach().cpu().numpy()
+    else:
+        showing = showing.permute(1, 2, 0).detach().cpu().numpy()
+
+    plt.imshow(showing)
+    plt.show()
+
+
+def create_batches(frames_to_do, batch_size=BATCH_SIZE):
     n = frames_to_do.shape[0]
     h, w = frames_to_do.shape[1:3]
     scale = 0.875
@@ -320,7 +260,6 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
     tfs.append(ToSpaceBGR(input_space == 'BGR'))
     tfs.append(ToRange255(max(input_range) == 255))
     tfs.append(transforms.Normalize(mean=mean, std=std))
-    # tfs.append(transforms.ToTensor)
     tf = transforms.Compose(tfs)
 
     a = int((0.5 * oh) - (0.5 * float(input_size[1])))
@@ -338,43 +277,23 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
     for idx in range (0, n, batch_size):
         frames_idx = list(range(idx, min(idx + batch_size, n)))
 
-        import matplotlib.pyplot as plt
-
-        def plt_tensor(batched_t):
-            showing = batched_t[0]
-            if batched_t.shape[-1] == 3:
-                plt.imshow(showing.detach().cpu().numpy())
-            else:
-                plt.imshow(showing.reshape(*showing.shape[1:], 3).detach().cpu().numpy())
-            plt.show()
-
         # <batch, h, w, ch> <0,255>
         batch_tensor = frames_to_do[frames_idx]
 
-        # plt_tensor(batch_tensor / 255.)
-
-        # batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
-        # for i, frame_ in enumerate(batch_frames):
-        #     inp = inp.unsqueeze(0)
-
-        # mini-batch x channels x [optional depth] x [optional height] x width
-        sh = batch_tensor.shape
-        pass_in = batch_tensor.view(sh[0], sh[3], sh[1], sh[2]) / 255.
+        pass_in = batch_tensor.permute(0, 3, 1, 2) / 255.
         inp = torch.nn.functional.interpolate(pass_in,
                                               size=(oh, ow),
                                               mode='bilinear', align_corners=True)
-        inp = inp * 255.
-
-        #Center cropping
-        cropped_image = inp[:, :, a:b, c:d]
+        # Center cropping
+        cropped_frames = inp[:, :, a:b, c:d]
         # cropped_image = cropped_image.contiguous()
-        for i in range(len(cropped_image)):
+        for i in range(len(cropped_frames)):
 
             ## Compare this code with that in line 81 of functional.py in torchvision/transforms.
             #Runs line 70, goes to 78 and runs until 83.
 
-            cropped_image[i] = cropped_image[i].reshape(331, 331, 3).transpose(0, 1).transpose(0, 2).contiguous()
-            cropped_image[i] = tf(cropped_image[i])
+            # cropped_image[i] = cropped_image[i].reshape(331, 331, 3).transpose(0, 1).transpose(0, 2).contiguous()
+            cropped_frames[i] = tf(cropped_frames[i])
 
             # img = img.transpose(0, 1).transpose(0, 2).contiguous()
             # img = torch.ByteTensor(torch.ByteStorage.from_buffer(pic.tobytes()))
@@ -392,36 +311,36 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
         # batches.append(frames_to_do[frames_idx])
 
         # batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
-        batches.append(cropped_image)
 
-    return batches[0]
+    return cropped_frames
 
 
-def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=BATCH_SIZE):
-    n = len(frames_to_do)
-    if n < batch_size:
-        logger.warning("Sample size less than batch size: Cutting batch size.")
-        batch_size = n
+# def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=BATCH_SIZE):
+#     n = len(frames_to_do)
+#     if n < batch_size:
+#         logger.warning("Sample size less than batch size: Cutting batch size.")
+#         batch_size = n
+#
+#     logger.info("Generating {} batches...".format(n // batch_size))
+#     batches = []
+#     frames_to_do = np.array(frames_to_do)
+#
+#     for idx in range(0, n, batch_size):
+#         frames_idx = list(range(idx, min(idx+batch_size, n)))
+#         batch_frames = frames_to_do[frames_idx]
+#
+#         batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
+#         for i, frame_ in enumerate(batch_frames):
+#             input_img = load_img_fn(frame_)
+#             input_tensor = tf_img_fn(input_img)  # 3x400x225 -> 3x299x299 size may differ
+#             # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
+#             batch_tensor[i] = input_tensor
+#
+#         batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
+#         batches.append(batch_ag)
+#
+#     return batches
 
-    logger.info("Generating {} batches...".format(n // batch_size))
-    batches = []
-    frames_to_do = np.array(frames_to_do)
-
-    for idx in range(0, n, batch_size):
-        frames_idx = list(range(idx, min(idx+batch_size, n)))
-        batch_frames = frames_to_do[frames_idx]
-
-        batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
-        for i, frame_ in enumerate(batch_frames):
-            input_img = load_img_fn(frame_)
-            input_tensor = tf_img_fn(input_img)  # 3x400x225 -> 3x299x299 size may differ
-            # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
-            batch_tensor[i] = input_tensor
-
-        batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
-        batches.append(batch_ag)
-
-    return batches
 
 def to_contiguous(tensor):
     if tensor.is_contiguous():
