@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
-BATCH_SIZE = 2
+BATCH_SIZE = 3
 
 
 class CarliniAttack:
@@ -209,7 +209,7 @@ class CarliniAttack:
                     batches[0].shape[2],
                     batches[0].shape[3],
                     batches[0].shape[1]
-                )[0])
+                )[0]/255.)
                 plt.show()
             feats = self.oracle.conv_forward(batches)
             seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
@@ -345,7 +345,7 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
             if batched_t.shape[-1] == 3:
                 plt.imshow(showing.detach().cpu().numpy())
             else:
-                plt.imshow(showing.reshape(*showing.shape[1:], 3).detach().cpu().numpy())
+                plt.imshow(showing.reshape(*showing.shape[1:], 3).detach().cpu().numpy()/255.)
             plt.show()
 
         # <batch, h, w, ch> <0,255>
@@ -360,6 +360,8 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
         # mini-batch x channels x [optional depth] x [optional height] x width
         sh = batch_tensor.shape
         pass_in = batch_tensor.view(sh[0], sh[3], sh[1], sh[2]) / 255.
+        #It's the interpolate that's messing up the code. Instead of a normal picture,
+        #it makes it all weird and 1 x 3 grey scaled messed up images.
         inp = torch.nn.functional.interpolate(pass_in,
                                               size=(oh, ow),
                                               mode='bilinear', align_corners=True)
@@ -367,6 +369,7 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
 
         #Center cropping
         cropped_image = inp[:, :, a:b, c:d]
+        print("break")
         # cropped_image = cropped_image.contiguous()
         for i in range(len(cropped_image)):
 
@@ -394,7 +397,7 @@ def create_batches(frames_to_do, tf_img_fn, load_image_fn, batch_size=BATCH_SIZE
         # batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
         batches.append(cropped_image)
 
-    return batches[0]
+    return batches
 
 
 def o_create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=BATCH_SIZE):
