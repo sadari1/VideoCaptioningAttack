@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
-BATCH_SIZE = 4
+BATCH_SIZE = 3
 
 
 class CarliniAttack:
@@ -244,12 +244,15 @@ def plt_tensor(batched_t):
 
 def plt_collate_batch(batched_t):
     n_col = 2
-    n_rows = int(len(batched_t) / n_col)
+    n_rows = np.max([2, int(len(batched_t) / n_col)])
     fig, axes = plt.subplots(nrows=n_rows, ncols=n_col, sharey=True, sharex=True)
 
     for i in range(n_rows):
         for j in range(n_col):
-            showing = batched_t[i + j]
+            if(i + j >= len(batched_t)):
+                showing = np.zeros(batched_t.shape)
+            else:
+                showing = batched_t[i + j]
             if batched_t.shape[-1] == 3:
                 showing = showing.detach().cpu().numpy()
             else:
