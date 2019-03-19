@@ -40,7 +40,7 @@ class CarliniAttack:
 
         frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
-        self.learning_rate = 0.1
+        self.learning_rate = 0.001
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -66,7 +66,8 @@ class CarliniAttack:
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.20)
         self.input_shape = (299, 299)
         self.target = target
-
+        self.real_target = ' '.join(target.split(' ')[1:-1])
+        # self.real_target = target
         self.tlabel, self.tmask = self.produce_t_mask()
 
         del(frames)
@@ -117,9 +118,9 @@ class CarliniAttack:
         # all the frames are stored in batches. Batches[0] should contain the first 32 frames.
         torch.cuda.empty_cache()
         # dc = 0.80
-        dc = 20
+        dc = 255
 
-        c = 2.0
+        c = 0.8
         # The attack
         for i in range(self.num_iterations):
 
@@ -133,14 +134,19 @@ class CarliniAttack:
             seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
 
             cost = self.loss(seq_prob)
-            print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
+            sents = utils.decode_sequence(self.vocab, seq_preds)
+            logger.info("Decoding at iteration {}: {} ".format(i, sents[0]))
+
+            # print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
 
             # w and y make calculations more efficient and are used to calculate the l2 norm
             y = torch_arctanh(original / 255.).cuda()
             w = torch_arctanh(pass_in / 255.) - y
             normterm = ((w+y).tanh() - y.tanh())
+            normterm = torch.abs(torch.sigmoid(normterm.mean(0).norm()) - 0.5)
             # cost = (c * cost.tanh() + 1) + ((1 - c) * normterm.mean(0).norm().tanh() + 1)
-            cost = cost + normterm.mean(0).norm()
+            print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
+            cost = (c * cost) + ((1 - c) * normterm)
 
             # cost = cost * 255.s
 
@@ -154,7 +160,7 @@ class CarliniAttack:
             # torch.cuda.empty_cache()
 
             # Every iteration it checks for whether or not the target caption equals the original
-            if sents[0] == self.target:
+            if sents[0] == self.real_target:
                 # We're done
                 logger.debug("Decoding at iteration {}:\t{} ".format(i, sents[0]))
                 logger.debug("Early stop. Cost: {}".format(cost))
@@ -162,19 +168,18 @@ class CarliniAttack:
                 break
 
             # Every 10 iterations it outputs the caption.
-            if i % 10 == 0:
+            if i % 1000 == 0:
                 # See how we're doing
-                plt_tensor(pass_in / 255.)
-                sents = utils.decode_sequence(self.vocab, seq_preds)
                 logger.info("Decoding at iteration {}: {} ".format(i, sents[0]))
+                plt_tensor(pass_in / 255.)
 
         self.oracle.encoder.eval()
         self.oracle.decoder.eval()
 
 
-        #Once everything is done, it will save the adversarial image by appending _adversarial to the original target file's name and uses its format.
+        # Once everything is done, it will save the adversarial image by appending _adversarial to the original target file's name and uses its format.
         print(video_path)
-        adv_image = self._tensor_to_PIL_im(pass_in)
+        # adv_image = self._tensor_to_PIL_im(pass_in)
         imgpath = video_path.split('/')
         advpath = '' + imgpath[0]
         for i in range(1, len(imgpath)-1):
@@ -183,8 +188,8 @@ class CarliniAttack:
         print(advpath)
         filename = imgpath[len(imgpath)-1].split('.')
         advpath += '/%s_adversarial.%s' % (filename[0], filename[1])
-        adv_image.save(advpath)
-        print(advpath)
+        # adv_image.save(advpath)
+        # print(advpath)
 
 
 def PIL_to_image(image_path):
