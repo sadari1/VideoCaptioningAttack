@@ -1,3 +1,4 @@
+import os
 import math
 import numpy as np
 import torch
@@ -37,7 +38,9 @@ class CarliniAttack:
         :param target: target caption (for now,
         in future target can also be the image we want to extract target caption from)
         """
-
+        self.seed = 9
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
         frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
         #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
         self.learning_rate = 0.001
@@ -164,32 +167,24 @@ class CarliniAttack:
                 # We're done
                 logger.debug("Decoding at iteration {}:\t{} ".format(i, sents[0]))
                 logger.debug("Early stop. Cost: {}".format(cost))
-                plt_tensor(pass_in / 255.)
+                plt_collate_batch(pass_in / 255.)
+
+                base_toks = video_path.split('/')
+                base_dir_toks = base_toks[:-1]
+                base_filename = base_toks[-1]
+                base_name = ''.join(base_filename.split('.')[:-1])
+                adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarial.avi')
+
+                logger.info("Saving adversarial video to:\t{}".format(adv_path))
+
+                save_tensor_to_video(pass_in, adv_path)
                 break
 
             # Every 10 iterations it outputs the caption.
             if i % 1000 == 0:
                 # See how we're doing
                 logger.info("Decoding at iteration {}: {} ".format(i, sents[0]))
-                plt_tensor(pass_in / 255.)
-
-        self.oracle.encoder.eval()
-        self.oracle.decoder.eval()
-
-
-        # Once everything is done, it will save the adversarial image by appending _adversarial to the original target file's name and uses its format.
-        print(video_path)
-        # adv_image = self._tensor_to_PIL_im(pass_in)
-        imgpath = video_path.split('/')
-        advpath = '' + imgpath[0]
-        for i in range(1, len(imgpath)-1):
-            advpath += '/%s' % imgpath[i]
-
-        print(advpath)
-        filename = imgpath[len(imgpath)-1].split('.')
-        advpath += '/%s_adversarial.%s' % (filename[0], filename[1])
-        # adv_image.save(advpath)
-        # print(advpath)
+                plt_collate_batch(pass_in / 255.)
 
 
 def PIL_to_image(image_path):
@@ -199,6 +194,11 @@ def PIL_to_image(image_path):
     image_tensor = image_tensor.to(device)
     image_tensor = Variable(image_tensor)
     return image_tensor
+
+
+def save_tensor_to_video(batched_t, fpath):
+    in_frames = batched_t.detach().cpu().numpy()
+    skvideo.io.vwrite(fpath, in_frames)
 
 
 class ToSpaceBGR(object):
@@ -231,9 +231,6 @@ def torch_arctanh(x, eps=1e-6):
     return (torch.log((1 + x) / (1 - x))) * 0.5
 
 
-import matplotlib.pyplot as plt
-
-
 def plt_tensor(batched_t):
     showing = batched_t[0]
     if batched_t.shape[-1] == 3:
@@ -242,6 +239,25 @@ def plt_tensor(batched_t):
         showing = showing.permute(1, 2, 0).detach().cpu().numpy()
 
     plt.imshow(showing)
+    plt.show()
+
+
+def plt_collate_batch(batched_t):
+    n_col = 2
+    n_rows = int(len(batched_t) / n_col)
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_col, sharey=True, sharex=True)
+
+    for i in range(n_rows):
+        for j in range(n_col):
+            showing = batched_t[i + j]
+            if batched_t.shape[-1] == 3:
+                showing = showing.detach().cpu().numpy()
+            else:
+                showing = showing.permute(1, 2, 0).detach().cpu().numpy()
+
+            axes[i, j].imshow(showing)
+
+    plt.tight_layout()
     plt.show()
 
 
