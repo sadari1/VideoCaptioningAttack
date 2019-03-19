@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
-BATCH_SIZE = 3
+BATCH_SIZE = 4
 
 
 class CarliniAttack:
@@ -123,7 +123,7 @@ class CarliniAttack:
         # dc = 0.80
         dc = 255
 
-        c = 0.8
+        c = 0.99
         # The attack
         for i in range(self.num_iterations):
 
@@ -247,18 +247,21 @@ def plt_collate_batch(batched_t):
     n_rows = np.max([2, int(len(batched_t) / n_col)])
     fig, axes = plt.subplots(nrows=n_rows, ncols=n_col, sharey=True, sharex=True)
 
+    k = 0
     for i in range(n_rows):
         for j in range(n_col):
-            if(i + j >= len(batched_t)):
-                showing = np.zeros(batched_t.shape)
+            if (k >= len(batched_t)):
+                showing = torch.from_numpy(np.ones(batched_t[0].shape))
             else:
-                showing = batched_t[i + j]
+                showing = batched_t[k]
+
             if batched_t.shape[-1] == 3:
                 showing = showing.detach().cpu().numpy()
             else:
                 showing = showing.permute(1, 2, 0).detach().cpu().numpy()
 
             axes[i, j].imshow(showing)
+            k += 1
 
     plt.tight_layout()
     plt.show()
