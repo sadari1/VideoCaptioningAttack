@@ -5,11 +5,12 @@ import os
 import torch
 import argparse
 import numpy as np
+
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
 from video_caption_pytorch.dataloader import VideoDataset
 from video_caption_pytorch.models.ConvS2VT import ConvS2VT
 from global_constants import *
-
+from utils import *
 from video_attack import CarliniAttack
 
 np.random.seed(SEED)
@@ -60,23 +61,25 @@ def main(opt):
         for v_id in viable_ids:
             if v_id == vid_id:
                 continue
-            plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions']]
+            plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions'] if len(toks) <= MAX_TARGET_LEN]
             viable_target_captions.extend(plausible_caps)
 
         target_caption = np.random.choice(viable_target_captions)
 
         carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
 
-        pass_in = carlini.execute(video_path, functional=True)
+        stats_obj = carlini.execute(video_path, functional=True, stats=True)
 
         base_name = ''.join(vn.split('.')[:-1])
         adv_path = os.path.join(opt['adv_dir'], base_name + '_adversarial.avi')
+        adv_raw_path = os.path.join(opt['adv_dir'], base_name + '_adversarial.pkl')
 
-        save_tensor_to_video(pass_in, adv_path)
+        save_tensor_to_video(stats_obj['pass_in'], adv_path)
+        pickle_write(adv_raw_path, stats_obj)
 
 
 def save_tensor_to_video(batched_t, fpath):
-    in_frames = batched_t.detach().cpu().numpy()
+    in_frames = batched_t
     skvideo.io.vwrite(fpath, in_frames)
 
 

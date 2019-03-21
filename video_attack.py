@@ -100,7 +100,7 @@ class CarliniAttack:
         return loss
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
-    def execute(self, video_path, window=None, functional=False):
+    def execute(self, video_path, window=None, functional=False, stats=False):
 
         print(video_path)
         if window:
@@ -148,12 +148,12 @@ class CarliniAttack:
             # print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
 
             # w and y make calculations more efficient and are used to calculate the l2 norm
-            # y = torch_arctanh(original / 255.).cuda()
-            # w = torch_arctanh(pass_in / 255.) - y
-            # normterm = ((w+y).tanh() - y.tanh())
-            # normterm = normterm.mean(0).norm()
-            normterm = self.delta / 255.
+            y = torch_arctanh(original / 255.).cuda()
+            w = torch_arctanh(pass_in / 255.) - y
+            normterm = ((w+y).tanh() - y.tanh())
             normterm = normterm.mean(0).norm()
+            # normterm = self.delta / 255.
+            # normterm = normterm.mean(0).norm()
             # cost = (c * cost.tanh() + 1) + ((1 - c) * normterm.mean(0).norm().tanh() + 1)
             print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
             cost = cost + (c * normterm)
@@ -185,7 +185,12 @@ class CarliniAttack:
                     plt_collate_batch(pass_in / 255.)
                     save_tensor_to_video(pass_in, adv_path)
 
-                return pass_in
+                if stats:
+                    return {'pass_in': pass_in.detach().cpu().numpy(),
+                            'iterations': i,
+                            'delta': self.delta.detach().cpu().numpy()}
+                else:
+                    return pass_in
 
             # Every 10 iterations it outputs the caption.
             if i % 1000 == 0:
