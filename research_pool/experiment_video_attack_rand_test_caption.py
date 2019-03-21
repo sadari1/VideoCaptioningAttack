@@ -3,26 +3,15 @@ from utils import *
 import json
 import os
 import argparse
-import skvideo.io
-import torch
-import PIL
+import numpy as np
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
 from video_caption_pytorch.dataloader import VideoDataset
-from pretrainedmodels import utils as ptm_utils
-from video_caption_pytorch.process_features import process_batches, create_batches
 from video_caption_pytorch.models.ConvS2VT import ConvS2VT
-from video_caption_pytorch.misc import utils as utils
+from global_constants import *
 
 from video_attack import CarliniAttack
 
-
-
-'''
-
-"D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips\AJJ-iQkbRNE_97_109.avi" --recover_opt "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\opt_info.json" --saved_model "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\model_1000.pth"
-
-'''
-
+np.random.seed(SEED)
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
@@ -50,19 +39,23 @@ def main(opt):
     else:
         return
 
-    # if torch.cuda.device_count() > 1:
-    #     print("{} devices detected, switch to parallel model.".format(torch.cuda.device_count()))
-    #     model = nn.DataParallel(model)
-
-
     convnet = 'nasnetalarge'
     full_decoder = ConvS2VT(convnet, model, opt)
 
-    #'A woman is cutting a green onion'
     video_path = opt['videos'][0]
+    vid_id = video_path.split('/')[-1]
+    vid_id = vid_id.split('.')[0]
+    # orig_captions = [' '.join(toks) for toks in dataset.vid_to_meta[vid_id]['final_captions']]
 
-    #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
-    target_caption = '<sos> A man is moving a toy <eos>'
+    viable_ids = dataset.splits['test'] + dataset.splits['val']
+    viable_target_captions = []
+    for v_id in viable_ids:
+        if v_id == vid_id:
+            continue
+        plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions']]
+        viable_target_captions.extend(plausible_caps)
+
+    target_caption = np.random.choice(viable_target_captions)
 
     carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
 
