@@ -124,7 +124,9 @@ class DecoderRNN(nn.Module):
                         it = Variable(torch.LongTensor([self.sos_id] * batch_size)).cuda()
                     elif sample_max:
                         sampleLogprobs, it = torch.max(logprobs, 1)
-                        seq_logprobs.append(sampleLogprobs.view(-1, 1))
+                        # seq_logprobs.append(sampleLogprobs.view(-1, 1))
+                        # Need log probs for each word $k$
+                        seq_logprobs.append(logprobs.unsqueeze(1))
                         it = it.view(-1).long()
 
                     else:

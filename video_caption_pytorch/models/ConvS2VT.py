@@ -48,5 +48,5 @@ class ConvS2VT(nn.Module):
 
     def encoder_decoder_forward(self, vid_feats, target_variable=None, mode='train', opt={}):
         # vid_feats = torch.from_numpy(vid_feats).to(self.device)
-        seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt)
+        seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt, target_variable=target_variable)
         return seq_probs, seq_preds

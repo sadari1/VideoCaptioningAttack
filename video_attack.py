@@ -42,8 +42,8 @@ class CarliniAttack:
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
         frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
-        #0.1 and c = 0.5 work. c=0.54 and 0.07 LR works even better.
-        self.learning_rate = 0.001
+        # 0.001 -> smaller perturbations
+        self.learning_rate = 0.005
         # self.learning_rate = 10
         self.num_iterations = 50000
         # self.num_iterations = 100
@@ -94,7 +94,7 @@ class CarliniAttack:
         return label.unsqueeze(0), mask.unsqueeze(0)
 
     def loss(self, seq_prob):
-        loss = self.crit(seq_prob.unsqueeze(0), self.tlabel[:, 1:].cuda(), self.tmask[:, 1:].cuda())
+        loss = self.crit(seq_prob, self.tlabel[:, 1:].cuda(), self.tmask[:, 1:].cuda())
         return loss
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
@@ -123,7 +123,7 @@ class CarliniAttack:
         # dc = 0.80
         dc = 255
 
-        c = 0.99
+        c = 0.8
         # The attack
         for i in range(self.num_iterations):
 
@@ -143,13 +143,15 @@ class CarliniAttack:
             # print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
 
             # w and y make calculations more efficient and are used to calculate the l2 norm
-            y = torch_arctanh(original / 255.).cuda()
-            w = torch_arctanh(pass_in / 255.) - y
-            normterm = ((w+y).tanh() - y.tanh())
-            normterm = torch.abs(torch.sigmoid(normterm.mean(0).norm()) - 0.5)
+            # y = torch_arctanh(original / 255.).cuda()
+            # w = torch_arctanh(pass_in / 255.) - y
+            # normterm = ((w+y).tanh() - y.tanh())
+            # normterm = normterm.mean(0).norm()
+            normterm = self.delta / 255.
+            normterm = normterm.mean(0).norm()
             # cost = (c * cost.tanh() + 1) + ((1 - c) * normterm.mean(0).norm().tanh() + 1)
             print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
-            cost = (c * cost) + ((1 - c) * normterm)
+            cost = cost + (c * normterm)
 
             # cost = cost * 255.s
 
