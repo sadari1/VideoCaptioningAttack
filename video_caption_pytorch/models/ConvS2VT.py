@@ -23,7 +23,7 @@ class ConvS2VT(nn.Module):
         self.s2vt = s2vt.to(self.device)
         self.s2vt.load_state_dict(torch.load(opt["saved_model"]))
 
-    def forward(self, frame_batches, target_variable=None, mode='train', opt={}):
+    def forward(self, frame_batches, target_variable=None, mode='train', opt={}, single_batch=True):
         """
 
         Args:
@@ -33,7 +33,7 @@ class ConvS2VT(nn.Module):
             seq_prob: Variable of shape [batch_size, max_len-1, vocab_size]
             seq_preds: [] or Variable of shape [batch_size, max_len-1]
         """
-        vid_feats = process_batches(frame_batches, self.conv_name, [0], self.conv)
+        vid_feats = process_batches(frame_batches, self.conv_name, [0], self.conv, single_batch=single_batch)
         vid_feats = vid_feats.unsqueeze(0)
         # TODO: Batch n videos and feed
         seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt)

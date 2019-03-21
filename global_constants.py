@@ -1,1 +1,2 @@
 SEED = 9
+BATCH_SIZE = 4

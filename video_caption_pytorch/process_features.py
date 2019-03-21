@@ -125,8 +125,7 @@ def extract_features(args):
         work_done += 1
 
 
-def process_batches(batches, ftype, gpu_list, model):
-    done_batches = []
+def process_batches(batches, ftype, gpu_list, model, single_batch=True):
     #for i, batch in enumerate(batches):
         #if torch.cuda.is_available():
             #batch = batch.cuda(device=gpu_list[0])
@@ -134,24 +133,56 @@ def process_batches(batches, ftype, gpu_list, model):
     # #TODO:
     # with torch.no_grad():
     # torch.cuda.empty_cache()
-    output_features = model.features(batches[0].cuda())
-    # output_features = output_features.data.cpu()
+    if single_batch:
+        output_features = model.features(batches[0].cuda())
+        # output_features = output_features.data.cpu()
 
-    conv_size = output_features.shape[-1]
+        conv_size = output_features.shape[-1]
 
-    if ftype == 'nasnetalarge' or ftype == 'pnasnet5large':
-        relu = nn.ReLU()
-        rf = relu(output_features)
-        avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
-        out_feats = avg_pool(rf)
+        if ftype == 'nasnetalarge' or ftype == 'pnasnet5large':
+            relu = nn.ReLU()
+            rf = relu(output_features)
+            avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
+            out_feats = avg_pool(rf)
+        else:
+            avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
+            out_feats = avg_pool(output_features)
+
+        out_feats = out_feats.view(out_feats.size(0), -1).cuda()
+
+        return out_feats
     else:
-        avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
-        out_feats = avg_pool(output_features)
+        n = len(batches)
+        b = torch.from_numpy(batches).cuda()
+        output_features = model.features(b)
+        output_features = output_features.data.cpu()
 
-    out_feats = out_feats.view(out_feats.size(0), -1).cuda()
-    # logger.info('Processed {}/{} batches.\r'.format('''i''', 0 + 1, len(batches)))
+        conv_size = output_features.shape[-1]
 
-    return out_feats
+        # for idx in range(0, n, batch_size):
+        #     frames_idx = list(range(idx, min(idx + batch_size, n)))
+        #     batch_frames = frames_to_do[frames_idx]
+        #
+        #     batch_tensor = torch.zeros((len(batch_frames),) + tuple(tf_img_fn.input_size))
+        #     for i, frame_ in enumerate(batch_frames):
+        #         input_img = load_img_fn(frame_)
+        #         input_tensor = tf_img_fn(input_img)  # 3x400x225 -> 3x299x299 size may differ
+        #         # input_tensor = input_tensor.unsqueeze(0)  # 3x299x299 -> 1x3x299x299
+        #         batch_tensor[i] = input_tensor
+        #
+        #     batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
+        #     batches.append(batch_ag)
+
+        if ftype == 'nasnetalarge' or ftype == 'pnasnet5large':
+            relu = nn.ReLU()
+            rf = relu(output_features)
+            avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
+            out_feats = avg_pool(rf)
+        else:
+            avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
+            out_feats = avg_pool(output_features)
+
+        return out_feats
 
 
 def create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=32):

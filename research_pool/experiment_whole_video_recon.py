@@ -3,21 +3,29 @@ from utils import *
 import json
 import os
 import argparse
+import torch
 import numpy as np
+import PIL
+import skvideo
+
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
 from video_caption_pytorch.dataloader import VideoDataset
 from video_caption_pytorch.models.ConvS2VT import ConvS2VT
 from global_constants import *
 import matplotlib.pyplot as plt
-import skvideo
-from entire_video_attack import CarliniAttack
+from video_attack import CarliniAttack, create_batches
+from pretrainedmodels import utils as ptm_utils
+from video_caption_pytorch.misc import utils as vcp_utils
 
 np.random.seed(SEED)
+torch.manual_seed(SEED)
+
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
     opt["vocab_size"] = dataset.get_vocab_size()
     opt["seq_length"] = dataset.max_len
+    vocab = dataset.get_vocab()
 
     if opt['beam_size'] != 1:
         assert opt["batch_size"] == 1
@@ -57,26 +65,35 @@ def main(opt):
         viable_target_captions.extend(plausible_caps)
 
     target_caption = np.random.choice(viable_target_captions)
-    window = []
-    interval = 3
+    interval = BATCH_SIZE
 
-    numIt  = len(skvideo.io.vread(video_path))
-    onumIt = numIt
+    num_seconds = 0.5
+    numIt = 4 # int(24 * num_seconds)
+    real_len = len(skvideo.io.vread(video_path))
+    assert numIt <= real_len
+
+    print("\t\t{} iterations to do.".format(numIt))
     counter = 0
     totalframes = []
-    while(numIt > interval-1):
+    adv_batches = []
+
+    while numIt > (interval - 1):
         window = range(counter, counter+interval)
         counter += interval
         carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset, window=window)
-        frames = carlini.execute(video_path)
+        frames = carlini.execute(video_path, window=window, functional=True)
         totalframes.append(frames.detach().cpu().numpy())
+        adv_batches.append(create_batches(frames, batch_size=interval).detach().cpu().numpy())
         numIt -= interval
+        print("\t\tWindow {}".format(numIt))
 
-    if(numIt > 0):
-        window = range(counter, counter+numIt)
+    if numIt > 0:
+        window = range(counter, counter + numIt)
         carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset, window=window)
-        frames = carlini.execute(video_path)
+        frames = carlini.execute(video_path, window=window, functional=True)
         totalframes.append(frames.detach().cpu().numpy())
+        adv_batches.append(create_batches(frames, batch_size=interval).detach().cpu().numpy())
+        print("\t\tWindow {}".format(numIt))
 
     base_toks = video_path.split('/')
     base_dir_toks = base_toks[:-1]
@@ -84,23 +101,26 @@ def main(opt):
     base_name = ''.join(base_filename.split('.')[:-1])
     adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarial.avi')
 
-    final = []
-    for i in totalframes:
-        for j in i:
-            final.append(j)
+    frames = np.concatenate(totalframes, axis=0)
+    save_frames_to_video(frames, adv_path)
+
+    batches = np.concatenate(adv_batches, axis=0)
+
+    with torch.no_grad():
+        print(frames.shape)
+
+        # bp ---
+        seq_prob, seq_preds = full_decoder(batches, mode='inference', single_batch=False)
+        sents = vcp_utils.decode_sequence(vocab, seq_preds)
+
+        print(sents[0])
 
 
-    #totalframes = np.array(totalframes).reshape(10, totalframes[0].shape[1], totalframes[0].shape[2], totalframes[0].shape[3])
-
-
-
-    save_tensor_to_video(final, adv_path)
-
-
-def save_tensor_to_video(batched_t, fpath):
+def save_frames_to_video(batched_t, fpath):
     # in_frames = batched_t.detach().cpu().numpy()
     print("Saving video to: %s" % fpath)
     skvideo.io.vwrite(fpath, batched_t)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

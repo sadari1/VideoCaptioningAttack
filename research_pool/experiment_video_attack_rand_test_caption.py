@@ -1,7 +1,8 @@
 from utils import *
-
+import skvideo
 import json
 import os
+import torch
 import argparse
 import numpy as np
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
@@ -12,6 +13,8 @@ from global_constants import *
 from video_attack import CarliniAttack
 
 np.random.seed(SEED)
+torch.manual_seed(SEED)
+
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
@@ -42,30 +45,47 @@ def main(opt):
     convnet = 'nasnetalarge'
     full_decoder = ConvS2VT(convnet, model, opt)
 
-    video_path = opt['videos'][0]
-    vid_id = video_path.split('/')[-1]
-    vid_id = vid_id.split('.')[0]
-    # orig_captions = [' '.join(toks) for toks in dataset.vid_to_meta[vid_id]['final_captions']]
+    video_names = os.listdir(opt['from_dir'])
 
     viable_ids = dataset.splits['test'] + dataset.splits['val']
-    viable_target_captions = []
-    for v_id in viable_ids:
-        if v_id == vid_id:
-            continue
-        plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions']]
-        viable_target_captions.extend(plausible_caps)
 
-    target_caption = np.random.choice(viable_target_captions)
+    for vn in video_names:
+        video_path = os.path.join(opt['from_dir'], vn)
+        vid_id = video_path.split('/')[-1]
+        vid_id = vid_id.split('.')[0]
+        orig_captions = [' '.join(toks) for toks in dataset.vid_to_meta[vid_id]['final_captions']]
+        original_caption = np.random.choice(orig_captions)
 
-    carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
+        viable_target_captions = []
+        for v_id in viable_ids:
+            if v_id == vid_id:
+                continue
+            plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions']]
+            viable_target_captions.extend(plausible_caps)
 
-    carlini.execute(video_path)
+        target_caption = np.random.choice(viable_target_captions)
+
+        carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
+
+        pass_in = carlini.execute(video_path, functional=True)
+
+        base_name = ''.join(vn.split('.')[:-1])
+        adv_path = os.path.join(opt['adv_dir'], base_name + '_adversarial.avi')
+
+        save_tensor_to_video(pass_in, adv_path)
+
+
+def save_tensor_to_video(batched_t, fpath):
+    in_frames = batched_t.detach().cpu().numpy()
+    skvideo.io.vwrite(fpath, in_frames)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('videos', nargs='+',
-                        help='space delimited list of video paths')
+    parser.add_argument('from_dir', type=str,
+                        help='')
+    parser.add_argument('adv_dir', type=str,
+                        help='')
     parser.add_argument('--recover_opt', type=str, required=True,
                         help='recover train opts from saved opt_json')
     parser.add_argument('--saved_model', type=str, default='',
