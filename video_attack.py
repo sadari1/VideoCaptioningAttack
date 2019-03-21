@@ -46,9 +46,9 @@ class CarliniAttack:
             frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
 
         # 0.001 -> smaller perturbations
-        self.learning_rate = 0.01
+        self.learning_rate = 0.005
         # self.learning_rate = 10
-        self.num_iterations = 50000
+        self.num_iterations = 1000
         # self.num_iterations = 100
         self.batch_size = 1
         self.phrase_length = len(target)
@@ -168,7 +168,7 @@ class CarliniAttack:
             # torch.cuda.empty_cache()
 
             # Every iteration it checks for whether or not the target caption equals the original
-            if sents[0] == self.real_target:
+            if sents[0] == self.real_target or i == self.num_iterations:
                 # We're done
                 logger.debug("Decoding at iteration {}:\t{} ".format(i, sents[0]))
                 logger.debug("Early stop. Cost: {}".format(cost))
@@ -179,10 +179,9 @@ class CarliniAttack:
                 base_name = ''.join(base_filename.split('.')[:-1])
                 adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarial.avi')
 
-                logger.info("Saving adversarial video to:\t{}".format(adv_path))
-
                 if not functional:
                     plt_collate_batch(pass_in / 255.)
+                    logger.info("Saving adversarial video to:\t{}".format(adv_path))
                     save_tensor_to_video(pass_in, adv_path)
 
                 if stats:

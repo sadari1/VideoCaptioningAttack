@@ -19,6 +19,11 @@ torch.manual_seed(SEED)
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
+    time_stamp = get_time_stamp()
+
+    if not os.path.isdir(os.path.join(opt['adv_dir'], time_stamp)):
+        os.makedirs(os.path.join(opt['adv_dir'], time_stamp))
+
     opt["vocab_size"] = dataset.get_vocab_size()
     opt["seq_length"] = dataset.max_len
 
@@ -69,10 +74,12 @@ def main(opt):
         carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
 
         stats_obj = carlini.execute(video_path, functional=True, stats=True)
+        stats_obj['original_caption'] = original_caption
+        stats_obj['target_caption'] = target_caption
 
         base_name = ''.join(vn.split('.')[:-1])
-        adv_path = os.path.join(opt['adv_dir'], base_name + '_adversarial.avi')
-        adv_raw_path = os.path.join(opt['adv_dir'], base_name + '_adversarial.pkl')
+        adv_path = os.path.join(opt['adv_dir'], time_stamp, base_name + '_adversarial.avi')
+        adv_raw_path = os.path.join(opt['adv_dir'], time_stamp, base_name + '_adversarial.pkl')
 
         save_tensor_to_video(stats_obj['pass_in'], adv_path)
         pickle_write(adv_raw_path, stats_obj)
