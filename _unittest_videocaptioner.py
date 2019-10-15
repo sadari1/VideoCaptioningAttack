@@ -24,6 +24,23 @@ import matplotlib.pyplot as plt
 
 #from video_attack import CarliniAttack
 
+
+'''
+python _unittest_videocaptioner.py
+"C:/Path/To/Video.avi" 
+--recover_opt "C:/Path/To/opt_info.json" 
+--saved_model "C:/Path/To/model_1000.pth"
+'''
+
+
+'''
+
+"D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips\AJJ-iQkbRNE_97_109.avi" --recover_opt "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\opt_info.json" --saved_model "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\model_1000.pth"
+
+'''
+
+
+
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
     opt["vocab_size"] = dataset.get_vocab_size()

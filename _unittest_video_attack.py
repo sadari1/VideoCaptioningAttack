@@ -15,6 +15,12 @@ from video_caption_pytorch.misc import utils as utils
 
 from video_attack import CarliniAttack
 
+''' Most recent configuration as of 10/15/2019
+python _unittest_video_attack.py
+"C:/Path/To/Directory/InputVideo.avi" 
+--recover_opt "C:/Path/To/opt_info.json" 
+--saved_model "C:/Path/To/model_1000.pth"
+'''
 
 
 '''

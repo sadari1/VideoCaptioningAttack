@@ -20,6 +20,14 @@ from video_caption_pytorch.misc import utils as vcp_utils
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
+'''
+python experiment_video_attack_rand_test_caption.py
+"D:\College\Research\videostoattack" 
+"D:\College\Research\attacked" 
+--recover_opt "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\opt_info.json" 
+--saved_model "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\model_1000.pth"
+'''
+
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')

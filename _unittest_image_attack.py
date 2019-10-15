@@ -18,6 +18,14 @@ python _unittest_image_captioner.py
 --vocab_path /path/to/vocab.pkl
 """
 
+'''
+python _unittest_image_attack.py 
+--image yunjey_image_captioning/png/example2.jpeg
+--encoder_path /path/to/encoder-5-3000.pkl 
+--decoder_path /path/to/decoder-5-3000.pkl 
+--vocab_path /path/to/vocab.pkl
+'''
+
 #python _unittest_image_captioner.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 #python _unittest_image_attack.py --image yunjey_image_captioning/png/example.png --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl
 #python _unittest_image_attack.py --image yunjey_image_captioning/png/example2.jpeg --encoder_path C:\Users\Shumpu\Documents\encoder-5-3000.pkl --decoder_path C:\Users\Shumpu\Documents\decoder-5-3000.pkl --vocab_path C:\Users\Shumpu\Documents\vocab.pkl

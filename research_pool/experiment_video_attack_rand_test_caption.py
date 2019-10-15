@@ -16,6 +16,14 @@ from video_attack import CarliniAttack
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
+'''
+"D:\College\Research\videostoattack" 
+"D:\College\Research\attacked" 
+--recover_opt "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\opt_info.json" 
+--saved_model "D:\College\Research\December 2018 Video Captioning Attack\video captioner\save\msvd_nasnetalarge\model_1000.pth"
+
+'''
+
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
@@ -57,7 +65,7 @@ def main(opt):
 
     for vn in video_names:
         video_path = os.path.join(opt['from_dir'], vn)
-        vid_id = video_path.split('/')[-1]
+        vid_id = video_path.split('\\')[-1]
         vid_id = vid_id.split('.')[0]
         orig_captions = [' '.join(toks) for toks in dataset.vid_to_meta[vid_id]['final_captions']]
         original_caption = np.random.choice(orig_captions)
@@ -82,6 +90,7 @@ def main(opt):
         adv_raw_path = os.path.join(opt['adv_dir'], time_stamp, base_name + '_adversarial.pkl')
 
         save_tensor_to_video(stats_obj['pass_in'], adv_path)
+        save_tensor_to_video(stats_obj['delta'], adv_path)
         pickle_write(adv_raw_path, stats_obj)
 
 
