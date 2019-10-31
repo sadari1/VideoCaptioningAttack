@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
+BATCH_SIZE = 3
+c = 100
+
 
 class CarliniAttack:
     def __init__(self, oracle, video_path, target, dataset, window=None, seed=SEED):
@@ -44,6 +47,7 @@ class CarliniAttack:
             frames = skvideo.io.vread(video_path)[window[0]:window[-1] + 1]
         else:
             frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
+            # frames = skvideo.io.vread(video_path)[3:6]
 
         # 0.001 -> smaller perturbations
         self.learning_rate = 0.005
@@ -105,8 +109,10 @@ class CarliniAttack:
         print(video_path)
         if window:
             frames = skvideo.io.vread(video_path)[window[0]:window[-1] + 1]
+            print("Frame length: {}".format(len(frames)))
         else:
             frames = skvideo.io.vread(video_path)[0:BATCH_SIZE]
+            # frames = skvideo.io.vread(video_path)[BATCH_SIZE:BATCH_SIZE+3]
         # plt.imshow(frames[0])
         # plt.show()
         original = torch.tensor(frames)
@@ -128,7 +134,7 @@ class CarliniAttack:
         # dc = 0.80
         dc = 255
 
-        c = 0.8
+
         # The attack
         for i in range(self.num_iterations):
 
@@ -183,6 +189,7 @@ class CarliniAttack:
                     plt_collate_batch(pass_in / 255.)
                     logger.info("Saving adversarial video to:\t{}".format(adv_path))
                     save_tensor_to_video(pass_in, adv_path)
+                    save_tensor_to_video(apply_delta, 'perturbation_' + adv_path)
 
                 if stats:
                     return {'pass_in': pass_in.detach().cpu().numpy(),
