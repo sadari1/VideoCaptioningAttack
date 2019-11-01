@@ -25,7 +25,7 @@ class Attention(nn.Module):
         nn.init.xavier_normal(self.linear1.weight)
         nn.init.xavier_normal(self.linear2.weight)
 
-    def forward(self, hidden_state, encoder_outputs):
+    def forward(self, hidden_state, encoder_outputs, get_attn = False):
         """
         Arguments:
             hidden_state {Variable} -- batch_size x dim
@@ -82,9 +82,14 @@ class Attention(nn.Module):
         ######### directly calculate the similarity of between encoder_outputs and hidden_state ############
         # batch_size, seq_len, hidden_size = encoder_outputs.size()
         # (batch, seq_len, dim) * (batch, dim, 1) -> (batch, seq_len, 1)-> (batch, seq_len)
+
         attn = torch.bmm(encoder_outputs, hidden_state.unsqueeze(2)).squeeze(2)
+        if (get_attn == True):
+            return attn
+
         # (batch, seq_len)-> (batch, 1, seq_len)
         attn = F.softmax(attn, dim=1).unsqueeze(1)
+
         # (batch, 1, seq_len) * (batch, seq_len, dim) -> (batch, 1, dim)
         context = torch.bmm(attn, encoder_outputs).squeeze(1)
         return context

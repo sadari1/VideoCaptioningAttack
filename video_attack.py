@@ -34,7 +34,7 @@ c = 100
 
 
 class CarliniAttack:
-    def __init__(self, oracle, video_path, target, dataset, window=None, seed=SEED):
+    def __init__(self, oracle, video_path, target, dataset, att_window = None, window=None, seed=SEED):
         """
         :param oracle: ImageCaptioner class
         :param image: sample image to get shape
@@ -42,6 +42,11 @@ class CarliniAttack:
         in future target can also be the image we want to extract target caption from)
         """
         self.seed = seed
+
+        if att_window:
+            frames = []
+            for f in att_window:
+                frames.append(skvideo.io.vread(video_path)[f])
 
         if window:
             frames = skvideo.io.vread(video_path)[window[0]:window[-1] + 1]
@@ -104,9 +109,16 @@ class CarliniAttack:
         return loss
 
     # Execute uses the image path directly. Fix out_dir later, for now it's the same directory (add an argument for output dir for argparse)
-    def execute(self, video_path, window=None, functional=False, stats=False):
+    def execute(self, video_path, att_window = None, window=None, functional=False, stats=False):
 
         print(video_path)
+
+        if att_window:
+            frames = []
+            for f in att_window:
+                frames.append(skvideo.io.vread(video_path)[f])
+            print("Attention frame length: {}".format(len(frames)))
+
         if window:
             frames = skvideo.io.vread(video_path)[window[0]:window[-1] + 1]
             print("Frame length: {}".format(len(frames)))

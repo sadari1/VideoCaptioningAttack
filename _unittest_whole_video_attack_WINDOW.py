@@ -1,12 +1,4 @@
-import argparse
-import torch
-
 from utils import *
-from ImageCaptioner import ImageCaptioner
-from yunjey_image_captioning.build_vocab import Vocabulary
-from torchvision import transforms
-
-from image_attack import CarliniAttack
 
 import json
 import os
@@ -14,20 +6,20 @@ import argparse
 import skvideo.io
 import torch
 import PIL
+import numpy as np
+import matplotlib.pyplot as plt
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
 from video_caption_pytorch.dataloader import VideoDataset
 from pretrainedmodels import utils as ptm_utils
 from video_caption_pytorch.process_features import process_batches, create_batches
 from video_caption_pytorch.models.ConvS2VT import ConvS2VT
 from video_caption_pytorch.misc import utils as utils
-import matplotlib.pyplot as plt
 
-#from video_attack import CarliniAttack
+from video_attack import CarliniAttack
 
-
-'''
-python _unittest_videocaptioner.py
-"C:/Path/To/Video.avi" 
+''' Most recent configuration as of 10/15/2019
+python _unittest_video_attack.py
+"C:/Path/To/Directory/InputVideo.avi" 
 --recover_opt "C:/Path/To/opt_info.json" 
 --saved_model "C:/Path/To/model_1000.pth"
 '''
@@ -39,6 +31,8 @@ python _unittest_videocaptioner.py
 
 '''
 
+target_caption = '<sos> A man is moving a toy <eos>'
+BATCH_SIZE = 3
 
 
 def main(opt):
@@ -71,35 +65,107 @@ def main(opt):
     #     print("{} devices detected, switch to parallel model.".format(torch.cuda.device_count()))
     #     model = nn.DataParallel(model)
 
+
+
     convnet = 'nasnetalarge'
-    vocab = dataset.get_vocab()
     full_decoder = ConvS2VT(convnet, model, opt)
 
-
-    #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
+    #'A woman is cutting a green onion'
     video_path = opt['videos'][0]
+
     tf_img_fn = ptm_utils.TransformImage(full_decoder.conv)
     load_img_fn = PIL.Image.fromarray
+    vocab = dataset.get_vocab()
 
-    print(video_path)
+
     with torch.no_grad():
         frames = skvideo.io.vread(video_path)
-        print("Total frames: {}".format(len(frames)))
-        print(frames[[0, 1, 2, 3, 4, 5]].shape)
-        plt.imshow(frames[13])
-        plt.show()
-
 
         # bp ---
         batches = create_batches(frames, load_img_fn, tf_img_fn)
         seq_prob, seq_preds = full_decoder(batches, mode='inference')
         sents = utils.decode_sequence(vocab, seq_preds)
 
-        print(sents[0])
+        original_caption = sents[0]
+
+    #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
+    # target_caption = '<sos> A man is moving a toy <eos>'
+    # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
 
+    length = len(skvideo.io.vread(video_path))
+
+    print("Total number of frames: {}".format(length))
+    adv_frames = []
+    iteration = 1
+    frame_counter = 0
+
+    total_iterations = np.ceil(length / BATCH_SIZE)
+    while(frame_counter < length):
+        print("\n\n\nIteration {}/{}".format(iteration, int(total_iterations)))
+        iteration = iteration + 1
+        if length - frame_counter < BATCH_SIZE:
+            window = [frame_counter, length]
+            frame_counter = frame_counter + (length - frame_counter)
+            print("Using frames {}".format(window))
+            print("Frame counter at: {}\nTotal length is: {}\n".format(frame_counter, length))
+            carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset,
+                                    window=window)
+            finished_frames = carlini.execute(video_path, window=window, functional=True)
+            adv_frames.append(finished_frames.detach().cpu().numpy())
+
+        else:
+            window = [frame_counter, frame_counter + BATCH_SIZE-1]
+            print("Using frames {}".format(window))
+            print("Frame counter at: {}\nTotal length is: {}\n".format(frame_counter, length))
+            carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset, window = window)
+            finished_frames = carlini.execute(video_path, window=window, functional=True)
+            adv_frames.append(finished_frames.detach().cpu().numpy())
+            frame_counter = frame_counter + BATCH_SIZE
+
+    base_toks = video_path.split('/')
+    base_dir_toks = base_toks[:-1]
+    base_filename = base_toks[-1]
+    base_name = ''.join(base_filename.split('.')[:-1])
+    adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarialWINDOW.avi')
+
+    print("\nSaving to: {}".format(adv_path))
+    adv_frames = np.concatenate(adv_frames, axis=0)
+    # skvideo.io.vwrite(adv_path, adv_frames)
+
+    outputfile = adv_path
+    writer = skvideo.io.FFmpegWriter(outputfile, outputdict={
+        '-vcodec': 'libx264',  # use the h.264 codec
+        '-crf': '0',  # set the constant rate factor to 0, which is lossless
+        '-preset': 'veryslow'  # the slower the better compression, in princple, try
+    })
+    for f in adv_frames:
+        writer.writeFrame(f)
+
+    # skvideo.io.vwrite(adv_path, adv_frames)
+    writer.close()
 
 
+    with torch.no_grad():
+        frames = skvideo.io.vread(adv_path)
+        # frames = adv_frames
+        # print(frames[[0, 1, 2, 3, 4, 5]].shape)
+        # plt.imshow(frames[13])
+        # plt.show()
+
+        # bp ---
+        batches = create_batches(frames, load_img_fn, tf_img_fn)
+        seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
+
+        adv_caption = sents[0]
+
+
+    print("\nOriginal Caption: {}\nTarget Caption: {}\nAdversarial Caption: {}".format(original_caption, target_caption, adv_caption))
+
+# carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
+
+    # carlini.execute(video_path)
 
 
 if __name__ == '__main__':

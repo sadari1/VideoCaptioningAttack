@@ -68,6 +68,7 @@ class DecoderRNN(nn.Module):
                 encoder_hidden,
                 targets=None,
                 mode='train',
+                get_attn=False,
                 opt={}):
         """
 
@@ -113,11 +114,18 @@ class DecoderRNN(nn.Module):
             seq_logprobs = torch.cat(seq_logprobs, 1)
 
         elif mode == 'inference':
+
             if beam_size == 1:
                 for t in range(self.max_length - 1):
                     if rnn_cell_type == 'lstm':
+                        if(get_attn == True):
+                            attn =self.attention(hidden_state=decoder_hidden[0].squeeze(0), encoder_outputs=encoder_outputs, get_attn=True)
+                            return attn
                         context = self.attention(decoder_hidden[0].squeeze(0), encoder_outputs)
                     elif rnn_cell_type == 'gru':
+                        if (get_attn == True):
+                            attn = self.attention(decoder_hidden.squeeze(0), encoder_outputs, get_attn=True)
+                            return attn
                         context = self.attention(decoder_hidden.squeeze(0), encoder_outputs)
 
                     if t == 0:  # input <bos>
@@ -163,8 +171,14 @@ class DecoderRNN(nn.Module):
                     temp = []
                     for s in current_words:
                         if rnn_cell_type == 'lstm':
+                            if (get_attn == True):
+                                attn = self.attention(hidden_state=decoder_hidden[0].squeeze(0), encoder_outputs=encoder_outputs, get_attn=True)
+                                return attn
                             context = self.attention(s[2][0].squeeze(0), encoder_outputs)
                         elif rnn_cell_type == 'gru':
+                            if (get_attn == True):
+                                attn = self.attention(hidden_state=decoder_hidden[0].squeeze(0), encoder_outputs=encoder_outputs, get_attn=True)
+                                return attn
                             context = self.attention(s[2].squeeze(0), encoder_outputs)
                         xt = self.embedding(s[0][-1])
                         decoder_input = torch.cat([xt, context], dim=1)

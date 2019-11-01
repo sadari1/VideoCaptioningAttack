@@ -23,7 +23,7 @@ class ConvS2VT(nn.Module):
         self.s2vt = s2vt.to(self.device)
         self.s2vt.load_state_dict(torch.load(opt["saved_model"]))
 
-    def forward(self, frame_batches, target_variable=None, mode='train', opt={}, single_batch=True):
+    def forward(self, frame_batches, target_variable=None, mode='train', get_attn=False, opt={}, single_batch=True):
         """
 
         Args:
@@ -35,6 +35,10 @@ class ConvS2VT(nn.Module):
         """
         vid_feats = process_batches(frame_batches, self.conv_name, [0], self.conv, single_batch=single_batch)
         vid_feats = vid_feats.unsqueeze(0)
+        if (get_attn == True):
+            attn = self.s2vt(vid_feats, mode=mode, get_attn=get_attn, opt=opt)
+            return attn
+
         # TODO: Batch n videos and feed
         seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt)
         return seq_probs, seq_preds
@@ -46,7 +50,11 @@ class ConvS2VT(nn.Module):
 
         return feats
 
-    def encoder_decoder_forward(self, vid_feats, target_variable=None, mode='train', opt={}):
+    def encoder_decoder_forward(self, vid_feats, target_variable=None, mode='train', get_attn=False, opt={}):
         # vid_feats = torch.from_numpy(vid_feats).to(self.device)
-        seq_probs, seq_preds = self.s2vt(vid_feats, mode=mode, opt=opt, target_variable=target_variable)
+        if(get_attn == True):
+            attn = self.s2vt(vid_feats, get_attn=get_attn, mode=mode, opt=opt, target_variable=target_variable)
+            return attn
+
+        seq_probs, seq_preds = self.s2vt(vid_feats, get_attn=get_attn, mode=mode, opt=opt, target_variable=target_variable)
         return seq_probs, seq_preds
