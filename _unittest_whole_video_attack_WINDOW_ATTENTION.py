@@ -32,6 +32,7 @@ python _unittest_video_attack.py
 '''
 
 target_caption = '<sos> A man is moving a toy <eos>'
+NUM_ATTENTION_FRAMES = 48
 ATTACK_BATCH_SIZE = 3
 BATCH_SIZE = 32
 
@@ -78,7 +79,7 @@ def main(opt):
     load_img_fn = PIL.Image.fromarray
     vocab = dataset.get_vocab()
 
-    length = len(skvideo.io.vread(video_path)) / 8
+    length = len(skvideo.io.vread(video_path)) / 4
     print("Total number of frames: {}".format(len(skvideo.io.vread(video_path))))
     print("Total number of frames to do: {}".format(length))
 
@@ -123,7 +124,7 @@ def main(opt):
 
     print(attn_weights)
 
-    att_window = np.sort(np.argpartition(attn_weights, -ATTACK_BATCH_SIZE)[-ATTACK_BATCH_SIZE:]).tolist()
+    att_window = np.sort(np.argpartition(attn_weights, -NUM_ATTENTION_FRAMES)[-NUM_ATTENTION_FRAMES:]).tolist()
 
 
     print("Indices of frames with highest attention weights: {}".format(att_window))
@@ -131,12 +132,41 @@ def main(opt):
     # target_caption = '<sos> A man is moving a toy <eos>'
     # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
-
     adv_frames = []
-    carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset,
-                                                            att_window=att_window)
-    finished_frames = carlini.execute(video_path, att_window=att_window, functional=True)
-    adv_frames.append(finished_frames.detach().cpu().numpy())
+
+    length = len(att_window)
+    frame_counter = 0
+    iteration = 1
+
+    total_iterations = np.ceil(length / ATTACK_BATCH_SIZE)
+
+    while (frame_counter < length):
+        print("\n\n\nIteration {}/{}".format(iteration, int(total_iterations)))
+        iteration = iteration + 1
+        if length - frame_counter < ATTACK_BATCH_SIZE:
+            a_window = att_window[frame_counter:length]
+            frame_counter = frame_counter + (length - frame_counter)
+            print("Using frames {}".format(a_window))
+            print("Frame counter at: {}\nTotal length is: {}\n".format(frame_counter, length))
+            carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset,
+                                    att_window=a_window)
+            finished_frames = carlini.execute(video_path, att_window=a_window, functional=True)
+            adv_frames.append(finished_frames.detach().cpu().numpy())
+
+        else:
+            a_window = att_window[frame_counter: frame_counter + ATTACK_BATCH_SIZE]
+            print("Using frames {}".format(a_window))
+            print("Frame counter at: {}\nTotal length is: {}\n".format(frame_counter, length))
+            carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset,
+                                    att_window=a_window)
+            finished_frames = carlini.execute(video_path, att_window=a_window, functional=True)
+            adv_frames.append(finished_frames.detach().cpu().numpy())
+            frame_counter = frame_counter + ATTACK_BATCH_SIZE
+
+    # carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset,
+    #                                                         att_window=att_window)
+    # finished_frames = carlini.execute(video_path, att_window=att_window, functional=True)
+    # adv_frames.append(finished_frames.detach().cpu().numpy())
 
 
 
@@ -144,7 +174,7 @@ def main(opt):
     base_dir_toks = base_toks[:-1]
     base_filename = base_toks[-1]
     base_name = ''.join(base_filename.split('.')[:-1])
-    adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarial.avi')
+    adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarialWINDOWATTENTION.avi')
 
     print("\nSaving to: {}".format(adv_path))
     adv_frames = np.concatenate(adv_frames, axis=0)
@@ -166,10 +196,10 @@ def main(opt):
     with torch.no_grad():
         a_frames = skvideo.io.vread(adv_path)
 
-        # frames = skvideo.io.vread(video_path)
+        frames = skvideo.io.vread(video_path)
 
-        # for f in range(0, len(att_window)):
-        #     frames[att_window[f]] = a_frames[f]
+        for f in range(0, len(att_window)):
+            frames[att_window[f]] = a_frames[f]
 
         # frames = frames[:50]
         # frames = adv_frames
@@ -181,16 +211,22 @@ def main(opt):
         # plt.show()
 
         # bp ---
-
-
         batches = create_batches(a_frames, load_img_fn, tf_img_fn)
+        seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
+
+        attacked_frame_caption = sents[0]
+
+        batches = create_batches(frames, load_img_fn, tf_img_fn)
         seq_prob, seq_preds = full_decoder(batches, mode='inference')
         sents = utils.decode_sequence(vocab, seq_preds)
 
         adv_caption = sents[0]
 
 
-    print("\nOriginal Caption: {}\nTarget Caption: {}\nAdversarial Caption: {}".format(original_caption, target_caption, adv_caption))
+
+
+    print("\nOriginal Caption: {}\nTarget Caption: {}\nAdversarial Frames Caption: {}\nTotal Video Caption: {}".format(original_caption, target_caption, attacked_frame_caption, adv_caption))
 
 # carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
 

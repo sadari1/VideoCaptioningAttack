@@ -197,6 +197,7 @@ class CarliniAttack:
                 base_name = ''.join(base_filename.split('.')[:-1])
                 adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarial.avi')
 
+                # plt_tensor(pass_in/255.)
                 if not functional:
                     plt_collate_batch(pass_in / 255.)
                     logger.info("Saving adversarial video to:\t{}".format(adv_path))
@@ -217,6 +218,8 @@ class CarliniAttack:
                 if not functional:
                     plt_collate_batch(pass_in / 255.)
 
+            # if i % 20 == 0:
+            #     plt_tensor(pass_in/255.)
 
 def PIL_to_image(image_path):
     tensorize = transforms.ToTensor()

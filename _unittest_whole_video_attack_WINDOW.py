@@ -31,7 +31,7 @@ python _unittest_video_attack.py
 
 '''
 
-target_caption = '<sos> A man is moving a toy <eos>'
+# target_caption = '<sos> A man is moving a toy <eos>'
 BATCH_SIZE = 3
 
 
@@ -77,6 +77,18 @@ def main(opt):
     load_img_fn = PIL.Image.fromarray
     vocab = dataset.get_vocab()
 
+    vid_id = video_path.split('/')[-1]
+    vid_id = vid_id.split('.')[0]
+
+    viable_ids = dataset.splits['test'] + dataset.splits['val']
+    viable_target_captions = []
+    for v_id in viable_ids:
+        if v_id == vid_id:
+            continue
+        plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions']]
+        viable_target_captions.extend(plausible_caps)
+
+    target_caption = np.random.choice(viable_target_captions)
 
     with torch.no_grad():
         frames = skvideo.io.vread(video_path)
@@ -93,7 +105,7 @@ def main(opt):
     # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
 
-    length = len(skvideo.io.vread(video_path))
+    length = len(skvideo.io.vread(video_path))/8
 
     print("Total number of frames: {}".format(length))
     adv_frames = []
@@ -137,7 +149,9 @@ def main(opt):
     writer = skvideo.io.FFmpegWriter(outputfile, outputdict={
         '-vcodec': 'libx264',  # use the h.264 codec
         '-crf': '0',  # set the constant rate factor to 0, which is lossless
-        '-preset': 'veryslow'  # the slower the better compression, in princple, try
+        '-vb': '50M',
+        '-r': '25',
+        '-preset': 'ultrafast'  # the slower the better compression, in princple, try
     })
     for f in adv_frames:
         writer.writeFrame(f)
