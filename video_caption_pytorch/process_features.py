@@ -208,7 +208,7 @@ def create_batches(frames_to_do, load_img_fn, tf_img_fn, batch_size=32):
 
         batch_ag = torch.autograd.Variable(batch_tensor, requires_grad=False)
         batches.append(batch_ag)
-
+    print("Dimensions: {}".format(batches[0].shape))
     return batches
 
 

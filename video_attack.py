@@ -155,6 +155,19 @@ class CarliniAttack:
             # The perturbation is applied to the original and resized through interpolation
             pass_in = torch.clamp(apply_delta + original, min=0, max =255)
 
+            # #Using huffyuv
+            #
+            # tmp = 'tmp_pass_in.avi'
+            # writer = skvideo.io.FFmpegWriter(tmp, outputdict=
+            # {
+            #     '-c:v': 'huffyuv'
+            # })
+            # for f in pass_in:
+            #     writer.writeFrame(f)
+            #
+            # pass_in = skvideo.io.vread(tmp)
+
+
             batch = create_batches(pass_in)
             feats = self.oracle.conv_forward(batch.unsqueeze(0))
             seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
@@ -340,6 +353,7 @@ def create_batches(frames_to_do, batch_size=BATCH_SIZE):
         # <batch, h, w, ch> <0,255>
         batch_tensor = frames_to_do[frames_idx]
 
+        print("Loaded dimensions: {}".format(batch_tensor.shape))
         pass_in = batch_tensor.permute(0, 3, 1, 2) / 255.
         inp = torch.nn.functional.interpolate(pass_in,
                                               size=(oh, ow),
@@ -349,7 +363,7 @@ def create_batches(frames_to_do, batch_size=BATCH_SIZE):
         # cropped_image = cropped_image.contiguous()
         for i in range(len(cropped_frames)):
             cropped_frames[i] = tf(cropped_frames[i])
-
+    print("Cropped dimensions: {}".format(cropped_frames[0].shape))
     return cropped_frames
 
 
