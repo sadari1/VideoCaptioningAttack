@@ -163,7 +163,7 @@ class CarliniAttack:
             sents = utils.decode_sequence(self.vocab, seq_preds)
             logger.info("Decoding at iteration {}: {} ".format(i, sents[0]))
 
-            if sents[0] == self.real_target or i == self.num_iterations:
+            if sents[0] == self.real_target or i == (self.num_iterations - 1):
 
                 # We're done
                 logger.debug("Decoding at iteration {}:\t{} ".format(i, sents[0]))
