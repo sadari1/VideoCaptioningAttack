@@ -136,7 +136,7 @@ def main(opt):
     # target_caption = '<sos> A man is moving a toy <eos>'
     # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
-
+    #/96 gives 3 frames
     length = len(skvideo.io.vread(video_path))/96
 
     print("Total number of frames: {}".format(length))
@@ -174,22 +174,24 @@ def main(opt):
     adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarialWINDOW.avi')
 
     print("\nSaving to: {}".format(adv_path))
+
     adv_frames = np.concatenate(adv_frames, axis=0)
     # skvideo.io.vwrite(adv_path, adv_frames)
 
-    print("Dimensions: {}".format(adv_frames.shape))
+    print("Dimensions after: {}".format(adv_frames.shape))
     outputfile = adv_path
 
 
 
     writer = skvideo.io.FFmpegWriter(outputfile, outputdict={
-        #huffyuv is lossless
+        #huffyuv is lossless. r10k is really good
 
         # '-c:v': 'libx264', #libx264 # use the h.264 codec
-        '-c:v': 'r10k', #r210 huffyuv rawvideo ffv1 r10k V408
+        '-c:v': 'huffyuv', #r210 huffyuv rawvideo ffv1 r10k V408
         # '-colorspace': '0',
-        '-pix_fmt': 'rgb32',
-        '-b': '50M'
+        # '-pix_fmt': 'rgb32',
+        # '-qp': '1'
+        # '-vb': '100M'
         # '-crf': '0', # set the constant rate factor to 0, which is lossless
         # '-vb': '50M',
         # '-q:v': '1',
@@ -232,43 +234,127 @@ def main(opt):
 
         frames = np.float32(frames)
 
-        print(type(frames), type(adv_frames))
-        # frames = adv_frames
-        # print(frames[[0, 1, 2, 3, 4, 5]].shape)
-        plt.imshow(adv_frames[1]/255.)
-        plt.show()
-
-        plt.imshow(frames[1]/255.)
-        plt.show()
-
-        plt.imshow((adv_frames[1] - frames[1])/255.)
-        plt.show()
-
-        plt.imshow((adv_frames[1] - frames[1]))
-        plt.show()
-
-        print(adv_frames.shape, frames.shape)
-        print(np.array(adv_frames).all() == np.array(frames).all())
-        print(np.array_equal(np.array(adv_frames), np.array(adv_frames)))
+        # print(type(frames), type(adv_frames))
+        # # frames = adv_frames
+        # # print(frames[[0, 1, 2, 3, 4, 5]].shape)
+        # plt.imshow(adv_frames[1]/255.)
+        # plt.show()
+        #
+        # plt.imshow(frames[1]/255.)
+        # plt.show()
+        #
+        # plt.imshow((adv_frames[1] - frames[1])/255.)
+        # plt.show()
+        #
+        # plt.imshow((adv_frames[1] - frames[1]))
+        # plt.show()
+        #
+        # print(adv_frames.shape, frames.shape)
+        # print(np.array(adv_frames).all() == np.array(frames).all())
+        # print(np.array_equal(np.array(adv_frames), np.array(adv_frames)))
+        # print(np.array_equal(np.array(adv_frames), np.array(frames)))
+        # print(np.mean(np.array(adv_frames)) - np.mean(np.array(frames)))
+        # print(np.mean(np.array(adv_frames)) - np.mean(np.array(adv_frames)))
         print(np.array_equal(np.array(adv_frames), np.array(frames)))
         print(np.mean(np.array(adv_frames)) - np.mean(np.array(frames)))
-        print(np.mean(np.array(adv_frames)) - np.mean(np.array(adv_frames)))
-        # print(np.array(adv_frames), np.array(frames))
-        # print(np.array(adv_frames == frames).all() == True)
-        # print(np.array(adv_frames == frames).any() == False)
+        # print(np.mean(np.array(frames)) - np.mean(np.array(adv_frames)))
+
+        # difference = []
+        #
+        # for f in range(0, len(frames)):
+        #     difference.append(frames[f] - adv_frames[f])
+
+        difference = np.array(adv_frames) - np.array(frames)
+        np.save('difference_tmp', difference)
+        #loadtxt to load np array from txt
+
+        exp = np.load('difference_tmp.npy')
+
+        print("Is the saved array equal to loaded array for difference: ", np.array_equal(exp, difference))
+        # difference = np.subtract(adv_frames, frames)
+
+        # print(np.array_equal((adv_frames - frames), np.subtract(adv_frames, frames)))
+
+        # plt.imshow(adv_frames[1] / 255.)
+        # plt.show()
+        #
+        # plt.imshow(frames[1]/255.)
+        # plt.show()
+
+        # plt.imshow((adv_frames[1] - frames[1])/255.)
+        # plt.show()
+
+        # plt.imshow((frames[1] - adv_frames[1]))
+        # plt.show()
+        #
+        # plt.imshow((adv_frames[1] - frames[1]))
+        # plt.show()
+
+
+        #
+        # plt.imshow(difference[1])
+        # plt.show()
+
+
+        frames = frames + difference
+        # frames = np.add(frames, difference).astype(np.uint8)
+
+        # plt.imshow((frames[1])/255.)
+        # plt.show()
+
+        # print(frames)
+        #
+        # plt.imshow((frames[1] - adv_frames[1]))
+        # plt.show()
+
+        print(np.array_equal(np.array(adv_frames), np.array(frames)))
+        print(np.mean(np.array(adv_frames)) - np.mean(np.array(frames)))
+
+        # print(np.mean(np.array(adv_frames)) - np.mean(np.array(frames)))
 
         # bp ---
-        # batches = create_batches(frames, load_img_fn, tf_img_fn)
+        adv_frames = adv_frames.astype(np.uint8)
+        # batches = create_batches(adv_frames, load_img_fn, tf_img_fn)
 
-        batches = exp_create_batches(frames, 3)
+        batches = exp_create_batches(adv_frames, BATCH_SIZE)
         feats = full_decoder.conv_forward((batches.unsqueeze(0)))
         seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
 
         # seq_prob, seq_preds = full_decoder(batches, mode='inference')
         sents = utils.decode_sequence(vocab, seq_preds)
 
-        adv_caption = sents[0]
+        print("Adversarial Frames: {}".format(sents[0]))
 
+        batches = exp_create_batches(adv_frames, BATCH_SIZE)
+        feats = full_decoder.conv_forward((batches.unsqueeze(0)))
+        seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
+
+        # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
+
+        print("Adversarial Frames: {}".format(sents[0]))
+
+        frames = frames.astype(np.uint8)
+        # batches = create_batches(frames, load_img_fn, tf_img_fn)
+
+        batches = exp_create_batches(frames, BATCH_SIZE)
+        feats = full_decoder.conv_forward((batches.unsqueeze(0)))
+        seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
+
+        # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
+        print("Adversarial caption: ", sents[0])
+
+        # frames = frames.astype(np.uint8)
+        # batches = create_batches(frames, load_img_fn, tf_img_fn)
+
+        batches = exp_create_batches(frames, BATCH_SIZE)
+        feats = full_decoder.conv_forward((batches.unsqueeze(0)))
+        seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
+
+        # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
+        adv_caption = sents[0]
 
     print("\nOriginal Caption: {}\nTarget Caption: {}\nAdversarial Caption: {}".format(original_caption, target_caption, adv_caption))
 
@@ -349,7 +435,6 @@ def exp_create_batches(frames_to_do, batch_size=BATCH_SIZE):
         # cropped_image = cropped_image.contiguous()
         for i in range(len(cropped_frames)):
             cropped_frames[i] = tf(cropped_frames[i])
-    print("new dims: {}".format(cropped_frames[0].shape))
     return cropped_frames
 
 

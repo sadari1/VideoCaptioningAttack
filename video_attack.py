@@ -155,19 +155,6 @@ class CarliniAttack:
             # The perturbation is applied to the original and resized through interpolation
             pass_in = torch.clamp(apply_delta + original, min=0, max =255)
 
-            # #Using huffyuv
-            #
-            # tmp = 'tmp_pass_in.avi'
-            # writer = skvideo.io.FFmpegWriter(tmp, outputdict=
-            # {
-            #     '-c:v': 'huffyuv'
-            # })
-            # for f in pass_in:
-            #     writer.writeFrame(f)
-            #
-            # pass_in = skvideo.io.vread(tmp)
-
-
             batch = create_batches(pass_in)
             feats = self.oracle.conv_forward(batch.unsqueeze(0))
             seq_prob, seq_preds = self.oracle.encoder_decoder_forward(feats, mode='inference')
@@ -176,30 +163,8 @@ class CarliniAttack:
             sents = utils.decode_sequence(self.vocab, seq_preds)
             logger.info("Decoding at iteration {}: {} ".format(i, sents[0]))
 
-            # print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
-
-            # w and y make calculations more efficient and are used to calculate the l2 norm
-            y = torch_arctanh(original / 255.).cuda()
-            w = torch_arctanh(pass_in / 255.) - y
-            normterm = ((w+y).tanh() - y.tanh())
-            normterm = normterm.mean(0).norm()
-            # normterm = self.delta / 255.
-            # normterm = normterm.mean(0).norm()
-            # cost = (c * cost.tanh() + 1) + ((1 - c) * normterm.mean(0).norm().tanh() + 1)
-            print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
-            cost = cost + (c * normterm)
-
-            # calculate gradients
-            self.optimizer.zero_grad()
-            cost.backward()
-            self.optimizer.step()
-
-            # Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
-            logger.debug("\nIteration: {}, cost: {}".format(i, cost))
-            # torch.cuda.empty_cache()
-
-            # Every iteration it checks for whether or not the target caption equals the original
             if sents[0] == self.real_target or i == self.num_iterations:
+
                 # We're done
                 logger.debug("Decoding at iteration {}:\t{} ".format(i, sents[0]))
                 logger.debug("Early stop. Cost: {}".format(cost))
@@ -233,6 +198,31 @@ class CarliniAttack:
 
             # if i % 20 == 0:
             #     plt_tensor(pass_in/255.)
+
+            # print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
+
+            # w and y make calculations more efficient and are used to calculate the l2 norm
+            y = torch_arctanh(original / 255.).cuda()
+            w = torch_arctanh(pass_in / 255.) - y
+            normterm = ((w+y).tanh() - y.tanh())
+            normterm = normterm.mean(0).norm()
+            # normterm = self.delta / 255.
+            # normterm = normterm.mean(0).norm()
+            # cost = (c * cost.tanh() + 1) + ((1 - c) * normterm.mean(0).norm().tanh() + 1)
+            print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
+            cost = cost + (c * normterm)
+
+            # calculate gradients
+            self.optimizer.zero_grad()
+            cost.backward()
+            self.optimizer.step()
+
+            # Iteration and cost displayed at every step. We apply the perturbation to the original image again to find the adversarial caption.
+            logger.debug("\nIteration: {}, cost: {}".format(i, cost))
+            # torch.cuda.empty_cache()
+
+            # Every iteration it checks for whether or not the target caption equals the original
+
 
 def PIL_to_image(image_path):
     tensorize = transforms.ToTensor()
@@ -353,7 +343,6 @@ def create_batches(frames_to_do, batch_size=BATCH_SIZE):
         # <batch, h, w, ch> <0,255>
         batch_tensor = frames_to_do[frames_idx]
 
-        print("Loaded dimensions: {}".format(batch_tensor.shape))
         pass_in = batch_tensor.permute(0, 3, 1, 2) / 255.
         inp = torch.nn.functional.interpolate(pass_in,
                                               size=(oh, ow),
@@ -363,7 +352,6 @@ def create_batches(frames_to_do, batch_size=BATCH_SIZE):
         # cropped_image = cropped_image.contiguous()
         for i in range(len(cropped_frames)):
             cropped_frames[i] = tf(cropped_frames[i])
-    print("Cropped dimensions: {}".format(cropped_frames[0].shape))
     return cropped_frames
 
 
