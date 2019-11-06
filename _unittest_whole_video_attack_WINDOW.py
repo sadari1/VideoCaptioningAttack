@@ -137,7 +137,7 @@ def main(opt):
     # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
     #/96 gives 3 frames
-    length = len(skvideo.io.vread(video_path))/96
+    length = len(skvideo.io.vread(video_path))/2
 
     print("Total number of frames: {}".format(length))
     adv_frames = []
@@ -218,6 +218,7 @@ def main(opt):
     #r10k
     #rawvideo 0.21595001
     with torch.no_grad():
+        full_decoder=full_decoder.eval()
 
         frames = skvideo.io.vread(adv_path)
         #
