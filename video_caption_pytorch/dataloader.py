@@ -59,7 +59,8 @@ class VideoDataset(Dataset):
         self.mode = mode  # to load train/val/test data
 
         # load the json file which contains information about the dataset
-        self.dataset_meta = json.load(open("D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\dataset_msvd.json"))
+        # self.dataset_meta = json.load(open("D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\dataset_msvd.json"))
+        self.dataset_meta = json.load(open(opt["dataset_json"]))
         self.vid_to_meta = self.dataset_meta['vid_to_meta']
         self.ix_to_word = self.dataset_meta['ix_to_word']
         self.word_to_ix = self.dataset_meta['word_to_ix']
@@ -85,8 +86,11 @@ class VideoDataset(Dataset):
 
             for fid in self.splits[mode]:
                 fc_feat_path = os.path.join(self.feats_dir, fid)
-                fc_feat = load_and_subsample_feat(fc_feat_path, self.n_frame_steps)
-                self._feat_cache[fid] = fc_feat
+                try:
+                    fc_feat = load_and_subsample_feat(fc_feat_path, self.n_frame_steps)
+                    self._feat_cache[fid] = fc_feat
+                except:
+                    print(fc_feat_path, "was not found")
                 # work.append((fid, fc_feat_path, self.n_frame_steps))
             # pool.starmap(_threaded_sample_load, work)
             # pool.close()
@@ -165,7 +169,7 @@ class VideoDataset(Dataset):
 
 
 def load_and_subsample_feat(fc_feat_path, n_frame_steps=28):
-    fc_feat = np.load(fc_feat_path)
+    fc_feat = np.load(fc_feat_path + '.npy')
     # Subsampling
     samples = np.round(np.linspace(
         0, fc_feat.shape[0] - 1, n_frame_steps)).astype(np.int32)

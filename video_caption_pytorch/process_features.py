@@ -82,7 +82,7 @@ def extract_features(args):
 
         frames_dir = np.random.choice(frames_dirs_avail)
         ext = '.' + frames_dir.split('.')[-1]
-        feat_filename = frames_dir.split('/')[-1].split(ext)[0]
+        feat_filename = frames_dir.split('/')[-1].split(ext)[0] + '.npy'
         video_feats_path = os.path.join(args.feats_dir, feat_filename)
 
         if os.path.exists(video_feats_path):
@@ -120,7 +120,7 @@ def extract_features(args):
         feats = process_batches(batches, ftype, gpu_list, model)
 
         with open(video_feats_path, 'wb') as pf:
-            np.save(pf, feats)
+            np.save(pf, feats.detach().cpu().numpy())
             logger.info('Saved complete features to {}.'.format(video_feats_path))
         work_done += 1
 

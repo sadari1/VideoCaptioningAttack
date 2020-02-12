@@ -39,7 +39,10 @@ python _unittest_videocaptioner.py
 
 '''
 
-
+import torch
+torch.manual_seed(117)
+import numpy
+numpy.random.seed(117)
 
 def main(opt):
     dataset = VideoDataset(opt, 'inference')
@@ -71,13 +74,33 @@ def main(opt):
     #     print("{} devices detected, switch to parallel model.".format(torch.cuda.device_count()))
     #     model = nn.DataParallel(model)
 
-    convnet = 'nasnetalarge'
+    # convnet = 'nasnetalarge'
+    convnet = 'resnet152'
     vocab = dataset.get_vocab()
     full_decoder = ConvS2VT(convnet, model, opt)
 
+    videos = {
+
+        # 1: 'RSx5G0_xH48_12_17.avi',
+        2: 'nc8hwLaOyZU_1_19_adversarialWINDOW.avi',
+        3: 'O2qiPS2NCeY_2_18_adversarialWINDOW.avi',
+        4: 'kI6MWZrl8v8_149_161_adversarialWINDOW.avi',
+        5: 'X7sQq-Iu1gQ_12_22_adversarialWINDOW.avi',
+        6: '77iDIp40m9E_159_181_adversarialWINDOW.avi',
+        7: 'SaYwh6chmiw_15_40_adversarialWINDOW.avi',
+        8: 'pFSoWsocv0g_8_17_adversarialWINDOW.avi',
+        9: 'HmVPxs4ygMc_44_53_adversarialWINDOW.avi',
+        10: 'glii-kazad8_21_29_adversarialWINDOW.avi',
+        11: 'AJJ-iQkbRNE_97_109_adversarialWINDOW.avi'
+
+    }
 
     #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
-    video_path = opt['videos'][0]
+    # video_path = opt['videos'][0]
+
+    video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\' + \
+                 videos[2]
+
     tf_img_fn = ptm_utils.TransformImage(full_decoder.conv)
     load_img_fn = PIL.Image.fromarray
 
@@ -85,8 +108,8 @@ def main(opt):
     with torch.no_grad():
         frames = skvideo.io.vread(video_path)
         print("Total frames: {}".format(len(frames)))
-        print(frames[[0, 1, 2, 3, 4, 5]].shape)
-        plt.imshow(frames[13])
+        # print(frames[[0, 1, 2, 3, 4, 5]].shape)
+        plt.imshow(frames[0])
         plt.show()
 
 

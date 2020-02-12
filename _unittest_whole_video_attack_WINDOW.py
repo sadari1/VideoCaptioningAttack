@@ -92,9 +92,9 @@ def main(opt):
         viable_target_captions.extend(plausible_caps)
 
     #Random target caption
-    target_caption = np.random.choice(viable_target_captions)
+    # target_caption = np.random.choice(viable_target_captions)
     # target_caption = '<sos> A man is moving a toy <eos>'
-    # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
+    target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
     with torch.no_grad():
         frames = skvideo.io.vread(video_path)
@@ -111,7 +111,7 @@ def main(opt):
     # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
     #/96 gives 3 frames
-    length = len(skvideo.io.vread(video_path))/2
+    length = len(skvideo.io.vread(video_path))/96
 
     print("Total number of frames: {}".format(length))
     adv_frames = []

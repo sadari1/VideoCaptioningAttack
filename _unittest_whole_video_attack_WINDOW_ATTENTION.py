@@ -31,7 +31,8 @@ python _unittest_video_attack.py
 
 '''
 
-target_caption = '<sos> A man is moving a toy <eos>'
+# target_caption = '<sos> A man is moving a toy <eos>'
+target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 NUM_ATTENTION_FRAMES = 48
 ATTACK_BATCH_SIZE = 3
 BATCH_SIZE = 32
@@ -79,7 +80,7 @@ def main(opt):
     load_img_fn = PIL.Image.fromarray
     vocab = dataset.get_vocab()
 
-    length = len(skvideo.io.vread(video_path)) / 4
+    length = len(skvideo.io.vread(video_path)) / 96
     print("Total number of frames: {}".format(len(skvideo.io.vread(video_path))))
     print("Total number of frames to do: {}".format(length))
 

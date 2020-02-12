@@ -11,6 +11,7 @@ import re
 import json
 
 
+
 def main(args):
     dict_path = args.gtdict
     count_thr = args.threshold
@@ -100,3 +101,5 @@ if __name__ == '__main__':
     opt.add_argument('--out_json_basepath', help="Basepath to use for written json file.", default="data/dataset_")
     args = opt.parse_args()
     main(args)
+
+#--gtdict "D:\College\Research\2019 Video Captioning Attack Conference Paper\youtube2text_preprocessed_for_arctic_capgen_vid\youtube2text_iccv15\dict_movieID_caption.pkl"

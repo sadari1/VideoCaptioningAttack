@@ -33,6 +33,10 @@ python _unittest_video_attack.py
 
 '''
 
+import torch
+torch.manual_seed(117)
+np.random.seed(117)
+
 # target_caption = '<sos> A man is moving a toy <eos>'
 BATCH_SIZE = 3
 
@@ -74,17 +78,72 @@ def main(opt):
     #config: batch_size, c, learning rate, num it,input shape
 
     config = {
-
+#lr 0.005 and dimensions 224, c was 100.
         "batch_size": BATCH_SIZE,
         "c": 100,
-        "learning_rate": 0.005,
+        "learning_rate": 0.02,
         "num_iterations": 1000,
-        "input_shape": (299, 299)
+        "input_shape": (224, 224),
+        "num_frames": 288,
+        "dimensions": 331
 
     }
 
-    convnet = 'nasnetalarge'
+    # convnet = 'nasnetalarge'
+    convnet = 'resnet152'
     full_decoder = ConvS2VT(convnet, model, opt)
+
+
+    '''
+    Layer freezing experiment.
+    
+    Top 10 contributing layers: 
+    conv.cell_stem_1.comb_iter_0_right.separable_1.depthwise_conv2d.weight
+    conv.cell_stem_1.comb_iter_2_right.separable_2.depthwise_conv2d.weight
+    conv.cell_stem_1.comb_iter_1_right.separable_1.depthwise_conv2d.weight
+    conv.cell_16.comb_iter_4_left.separable_1.depthwise_conv2d.weight
+    conv.cell_17.comb_iter_4_left.separable_1.depthwise_conv2d.weight
+    conv.cell_16.comb_iter_4_left.separable_1.pointwise_conv2d.weight
+    conv.cell_13.comb_iter_4_left.bn_sep_1.weight
+    conv.reduction_cell_0.conv_prev_1x1.bn.weight
+    conv.cell_17.comb_iter_4_left.separable_2.depthwise_conv2d.weight
+    conv.cell_13.comb_iter_0_left.bn_sep_1.weight
+    
+    
+    '''
+
+    top = open("top_layers.txt", "r")
+    top_layers = top.readlines()
+    top.close()
+    print(top_layers)
+
+    #set the gradients on the layers you don't want to contribute to 0
+    top_layers = []
+
+
+    for name, parameters in full_decoder.named_parameters():
+        reset = True
+        for f in top_layers:
+            if name in f:
+                reset = False
+
+        if reset:
+            parameters.require_grad = False
+            if parameters.grad is not None:
+                print(name)
+                parameters.grad.data.zero_()
+
+    # for name, parameters in full_decoder.named_parameters():
+    #     for f in top_layers:
+    #         if name not in f:
+    #             print(name)
+    #             parameters.require_grad = False
+    #             if parameters.grad is not None:
+    #                 # parameters.data = 0
+    #                 parameters.grad.data.zero_()
+    #         else:
+    #             # print(name)
+    #             continue
 
     #'A woman is cutting a green onion'
     video_path = opt['videos'][0]
@@ -104,13 +163,57 @@ def main(opt):
         plausible_caps = [' '.join(toks) for toks in dataset.vid_to_meta[v_id]['final_captions']]
         viable_target_captions.extend(plausible_caps)
 
-    #Random target caption
-    target_caption = np.random.choice(viable_target_captions)
+    #target_caption = np.random.choice(viable_target_captions)
+    # 5 captions:
+    '''
+    <sos> A person is typing into a laptop computer <eos>
+    <sos> A boy is kicking a soccer ball into the goal <eos>
+    <sos> Someone is frying fish <eos>
+    <sos> A dog is running with a ball <eos>
+    <sos> The cat approaches on grass <eos>
+    
+    '''
+    captions = {
+
+        1: '<sos> A woman is talking <eos>',
+        2: '<sos> A boy is kicking a soccer ball into the goal <eos>',
+        3: '<sos> A man is frying fish <eos>',
+        4: '<sos> A dog is running with a ball <eos>',
+        5: '<sos> A cat is walking on grass <eos>'
+    }
+
+    #1 doesn't work
+    videos = {
+
+        #2 is too high res or something, replaced X6uJyuD_Zso_3_17.avi with nc8hwLaOyZU_1_19.avi
+        #5,'ceOXCFUmxzA_100_110.avi' out of memory, replaced with 'X7sQq-Iu1gQ_12_22'
+        #1: 'RSx5G0_xH48_12_17.avi',
+        2: 'nc8hwLaOyZU_1_19.avi',
+        3: 'O2qiPS2NCeY_2_18.avi',
+        4: 'kI6MWZrl8v8_149_161.avi',
+        5: 'X7sQq-Iu1gQ_12_22.avi',
+        6: '77iDIp40m9E_159_181.avi',
+        7: 'SaYwh6chmiw_15_40.avi',
+        8: 'pFSoWsocv0g_8_17.avi',
+        9: 'HmVPxs4ygMc_44_53.avi',
+        10:'glii-kazad8_21_29.avi',
+        11: 'AJJ-iQkbRNE_97_109.avi'
+
+
+    }
+    #"D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips\AJJ-iQkbRNE_97_109.avi"
+    # video_path = ''
+
+    video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\' + videos[2]
     # target_caption = '<sos> A man is moving a toy <eos>'
     # target_caption = '<sos> A boy is kicking a soccer ball into the goal <eos>'
 
+    #Just switch the number to get a target caption.
+    target_caption = captions[1]
+
+    #Should use the original caption function we use in the attack because the scaling is sightly different
     with torch.no_grad():
-        frames = skvideo.io.vread(video_path)
+        frames = skvideo.io.vread(video_path,num_frames=config["num_frames"])
 
         # bp ---
         batches = create_batches(frames, load_img_fn, tf_img_fn)
@@ -122,8 +225,9 @@ def main(opt):
     #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
 
     #/96 gives 3 frames
-    length = len(skvideo.io.vread(video_path))/96
-
+    # length = math.ceil(len(skvideo.io.vread(video_path,num_frames=config["num_frames"]))/96)
+    #12 frames
+    length = 3
     print("Total number of frames: {}".format(length))
     adv_frames = []
     iteration = 1
@@ -173,8 +277,20 @@ def main(opt):
     adv_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarialWINDOW.avi')
 
     print("\nSaving to: {}".format(adv_path))
+    # adv_frames_1 = np.concatenate(adv_frames, axis=0)
+    # # batches = create_batches(adv_frames[0].astype(np.uint8), load_img_fn, tf_img_fn)
+    # batches = exp_create_batches(adv_frames_1.astype(np.uint8), 3)
+    # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+    # sents = utils.decode_sequence(vocab, seq_preds)
 
+    # print("Adversarial Frames 1: {}".format(sents[0]))
     adv_frames = np.concatenate(adv_frames, axis=0)
+    # batches = create_batches(adv_frames, load_img_fn, tf_img_fn)
+    # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+    # sents = utils.decode_sequence(vocab, seq_preds)
+    #
+    # print("Adversarial Frames 2: {}".format(sents[0]))
+
 
     outputfile = adv_path
 
@@ -192,6 +308,8 @@ def main(opt):
 
     writer.close()
 
+    # np_path = os.path.join('/'.join(base_dir_toks), base_name + '_adversarialWINDOW')
+    # np.save(np_path, adv_frames)
     #ffv1 0.215807946043995
     #huffyuv 0.21578424050191813
     #libx264 0.2341074901578537
@@ -205,6 +323,10 @@ def main(opt):
     #rawvideo 0.21595001
 
     with torch.no_grad():
+
+
+        #getting a new model to see how it actually works now
+        # full_decoder = ConvS2VT(convnet, model, opt)
         full_decoder=full_decoder.eval()
 
         frames = skvideo.io.vread(adv_path)
@@ -218,12 +340,48 @@ def main(opt):
 
         exp = np.load('difference_tmp.npy')
 
-        print("Is the saved array equal to loaded array for difference: ", np.array_equal(exp, difference))
+        # numpy_frames = np.load(np_path+'.npy')
+        # print("Are numpy frames == adv frames: ", np.array_equal(numpy_frames, adv_frames))
+        # print("Is the saved array equal to loaded array for difference: ", np.array_equal(exp, difference))
 
         frames = frames + difference
 
+        # batches = exp_create_batches(numpy_frames, BATCH_SIZE)
+        # feats = full_decoder.conv_forward((batches.unsqueeze(0)))
+        # seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
+        #
+        # # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        # sents = utils.decode_sequence(vocab, seq_preds)
+        # numpy_caption = sents[0]
+        #
+        # print("Numpy Frames exp: {}".format(numpy_caption))
+        #
 
-        # bp ---
+        # numpy_frames_tensor = torch.tensor(numpy_frames)
+        # numpy_frames_tensor = numpy_frames_tensor.float()
+        # batches = exp_create_batches(numpy_frames_tensor, BATCH_SIZE)
+        # feats = full_decoder.conv_forward((batches.unsqueeze(0)))
+        # seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
+        #
+        # # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        # sents = utils.decode_sequence(vocab, seq_preds)
+        # numpy_caption_tensor = sents[0]
+        #
+        # print("Numpy Frames tensor: {}".format(numpy_caption_tensor))
+
+
+        # numpy_frames = numpy_frames.astype(np.uint8)
+        # batches = create_batches(numpy_frames, load_img_fn, tf_img_fn)
+        #
+        # # batches = exp_create_batches(adv_frames, BATCH_SIZE)
+        # # feats = full_decoder.conv_forward((batches.unsqueeze(0)))
+        # # seq_prob, seq_preds = full_decoder.encoder_decoder_forward(feats, mode='inference')
+        #
+        # seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        # sents = utils.decode_sequence(vocab, seq_preds)
+        #
+        # print("Numpy Frames originalscale: {}".format(sents[0]))
+        # # bp ---
         adv_frames = adv_frames.astype(np.uint8)
         batches = create_batches(adv_frames, load_img_fn, tf_img_fn)
 
@@ -267,7 +425,13 @@ def main(opt):
         sents = utils.decode_sequence(vocab, seq_preds)
         adv_caption = sents[0]
 
+
+
     print("\nOriginal Caption: {}\nTarget Caption: {}\nAdversarial Caption: {}".format(original_caption, target_caption, adv_caption))
+    # print("\nNumpy caption: {}".format(numpy_caption))
+
+
+# print("\nNumpy caption: {}".format(numpy_caption))
 
 # carlini = CarliniAttack(oracle=full_decoder, video_path=video_path, target=target_caption, dataset=dataset)
 

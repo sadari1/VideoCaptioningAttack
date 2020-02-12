@@ -15,17 +15,19 @@ logger = logging.getLogger(__name__)
 # Change logging level to info if running experiment, debug otherwise
 logger.setLevel(logging.DEBUG)
 
+#save as numpy file and try
 
 class S2VT_Attack:
     def __init__(self, model, video_path, target, dataset, config, optimizer, crit, seq_decoder, window=None ):
         # self.seed = config.seed
 
         self.video_path = video_path
+        self.config = config
         self.batch_size = config["batch_size"]
         if window:
-            self.frames = skvideo.io.vread(video_path)[window[0]:window[-1] + 1]
+            self.frames = skvideo.io.vread(video_path,num_frames=config["num_frames"])[window[0]:window[-1] + 1]
         else:
-            self.frames = skvideo.io.vread(video_path)[0:self.batch_size]
+            self.frames = skvideo.io.vread(video_path,num_frames=config["num_frames"])[0:self.batch_size]
 
         # self.loss = loss
 
@@ -98,9 +100,6 @@ class S2VT_Attack:
         print('Target caption: ' + self.target)
         return original
 
-
-
-
     def costs_decoded(self, original):
         apply_delta = torch.clamp(self.delta * 255., min=-self.dc, max=self.dc)
 
@@ -153,7 +152,7 @@ class S2VT_Attack:
         save_tensor_to_video(apply_delta, 'perturbation_' + adv_path)
 
 
-    def plt_collate_batch(batched_t):
+    def plt_collate_batch(self, batched_t):
         n_col = 2
         n_rows = np.max([2, int(len(batched_t) / n_col)])
         fig, axes = plt.subplots(nrows=n_rows, ncols=n_col, sharey=True, sharex=True)
@@ -176,6 +175,7 @@ class S2VT_Attack:
 
         plt.tight_layout()
         plt.show()
+
 
     def create_batches(self, frames_to_do):
         batch_size = self.batch_size
@@ -205,7 +205,8 @@ class S2VT_Attack:
         n = frames_to_do.shape[0]
         h, w = frames_to_do.shape[1:3]
         scale = 0.875
-        input_size = [3, 331, 331]
+        dim = self.config["dimensions"]
+        input_size = [3, dim, dim]
         mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
         input_range = [0, 1.]
         input_space = 'RGB'
