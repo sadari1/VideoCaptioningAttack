@@ -75,9 +75,9 @@ def main(opt):
     #     print("{} devices detected, switch to parallel model.".format(torch.cuda.device_count()))
     #     model = nn.DataParallel(model)
 
-    # convnet = 'nasnetalarge'
+    convnet = 'nasnetalarge'
     # convnet = 'resnet152'
-    convnet = 'vgg16'
+    # convnet = 'vgg16'
     vocab = dataset.get_vocab()
     full_decoder = ConvS2VT(convnet, model, opt)
 #D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips\CNN_SaYwh6chmiw_15_40.npy
@@ -97,15 +97,35 @@ def main(opt):
 
     }
 
+    videos_CNN = {
+
+        # 1: 'RSx5G0_xH48_12_17.avi',
+        2: 'nc8hwLaOyZU_1_19.avi',
+        3: 'O2qiPS2NCeY_2_18.avi',
+        4: 'kI6MWZrl8v8_149_161.avi',
+        5: 'X7sQq-Iu1gQ_12_22.avi',
+        6: '77iDIp40m9E_159_181.avi',
+        7: 'SaYwh6chmiw_15_40.avi',
+        8: 'pFSoWsocv0g_8_17.avi',
+        9: 'HmVPxs4ygMc_44_53.avi',
+        10: 'glii-kazad8_21_29.avi',
+        11: 'AJJ-iQkbRNE_97_109.avi'
+
+    }
+
     #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
     # video_path = opt['videos'][0]
 
-    # video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\' + \
-    #              videos[2]
+    modelname = 'nasnetalarge'
 
-    video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\vgg16Adversarial_SaYwh6chmiw_15_40.avi'
+    o_video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\' + videos_CNN[2]
 
-    numpy_path = "D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\vgg16CNN_SaYwh6chmiw_15_40.npy"
+    video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\{}Adversarial_'.format(modelname) + \
+                 videos_CNN[2]
+
+    # video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\vgg16Adversarial_SaYwh6chmiw_15_40.avi'
+
+    numpy_path = "D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\{}CNN_{}.npy".format(modelname, videos_CNN[2].split('.')[0])
     adv_frames = np.load(numpy_path)
 
 
@@ -114,10 +134,18 @@ def main(opt):
 
     print(video_path)
     with torch.no_grad():
+        frames = skvideo.io.vread(o_video_path)
+        batches = create_batches(frames, load_img_fn, tf_img_fn)
+        seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
+
+        print("Original: ", sents[0])
+
+
         frames = skvideo.io.vread(video_path)
         print("Total frames: {}".format(len(frames)))
         # print(frames[[0, 1, 2, 3, 4, 5]].shape)
-        plt.imshow(frames[0]*255.)
+        plt.imshow(frames[0]/255.)
         plt.show()
 
 
@@ -126,13 +154,13 @@ def main(opt):
         seq_prob, seq_preds = full_decoder(batches, mode='inference')
         sents = utils.decode_sequence(vocab, seq_preds)
 
-        print(sents[0])
+        print("Adversarial huffyuv: ", sents[0])
 
 
         np_frames = adv_frames.astype(np.uint8)
         print("Numpy CNN frames \nTotal frames: {}".format(len(np_frames)))
         # print(frames[[0, 1, 2, 3, 4, 5]].shape)
-        plt.imshow(np_frames[0]*255.)
+        plt.imshow(np_frames[0]/255.)
         plt.show()
 
         # bp ---
@@ -140,7 +168,7 @@ def main(opt):
         seq_prob, seq_preds = full_decoder(batches, mode='inference')
         sents = utils.decode_sequence(vocab, seq_preds)
 
-        print(sents[0])
+        print("Adversarial numpy: ", sents[0])
 
 
 if __name__ == '__main__':

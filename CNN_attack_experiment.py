@@ -13,14 +13,14 @@ from pretrainedmodels import utils as ptm_utils
 import torch.optim as optim
 import PIL
 
-BATCH_SIZE = 16
-DIM = 224
+BATCH_SIZE = 3
+DIM = 331
 c = 10
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def main():
 
-    convnet = "vgg16"
+    convnet = "nasnetalarge"
 
     use_carlini = True
 
@@ -30,18 +30,52 @@ def main():
     conv.eval()
     conv.to(device)
 
-    video_name = "SaYwh6chmiw_15_40.avi"
+    videos = {
+
+        # 2 is too high res or something, replaced X6uJyuD_Zso_3_17.avi with nc8hwLaOyZU_1_19.avi
+        # 5,'ceOXCFUmxzA_100_110.avi' out of memory, replaced with 'X7sQq-Iu1gQ_12_22'
+        # 1: 'RSx5G0_xH48_12_17.avi',
+        2: 'nc8hwLaOyZU_1_19.avi',
+        3: 'O2qiPS2NCeY_2_18.avi',
+        4: 'kI6MWZrl8v8_149_161.avi',
+        5: 'X7sQq-Iu1gQ_12_22.avi',
+        6: '77iDIp40m9E_159_181.avi',
+        7: 'SaYwh6chmiw_15_40.avi',
+        8: 'pFSoWsocv0g_8_17.avi',
+        9: 'HmVPxs4ygMc_44_53.avi',
+        10: 'glii-kazad8_21_29.avi',
+        11: 'AJJ-iQkbRNE_97_109.avi'
+
+    }
+
+    # video_name = "SaYwh6chmiw_15_40.avi"
+    video_name = videos[2]
     video_path = "D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\"
+
     frames = skvideo.io.vread(video_path+video_name,num_frames=BATCH_SIZE)[0:BATCH_SIZE]
 
-    plt.imshow(frames[0])
+    # plt.imshow(frames[0])
 
     '''
     466 - 'bullet train, bullet',
     172: 'whippet',
     
+    
+    Target captoins
+    
     '''
-    target_class = 172
+
+    targets = {
+
+        "toucan": 96,
+        "balloon": 417,
+        "hammer": 587,
+        "soccer_ball": 805,
+        "spatula": 813,
+        "violin": 889
+
+    }
+    target_class = targets["violin"]
 
     target = []
     for f in range(BATCH_SIZE):
@@ -79,16 +113,17 @@ def main():
     #705 is a passenger car (train)
     with torch.no_grad():
         original_output = conv(original)
-        print(original_output, original_output.shape)
+        # print(original_output, original_output.shape)
+        print("Original classes: ")
         for f in original_output:
-            print(np.argmax(np.round(f)))
+            print(" {} ".format(np.argmax(np.round(f)).numpy()), end='')
 
     frames = torch.Tensor(frames).cuda().float()
     loss = nn.CrossEntropyLoss()
     target = torch.Tensor(target).long().cuda()
     adversarial_frames = attack(delta, conv, num_iterations, frames, target, optimizer, loss, use_carlini).detach().cpu().numpy()
 
-    plt.imshow(adversarial_frames[0])
+    plt.imshow(adversarial_frames[0]/255.)
     plt.show()
 
     np.save("{}{}CNN_{}.npy".format(video_path, convnet, video_name[:-4]), adversarial_frames)
@@ -137,7 +172,7 @@ def carliniwagner(output, target, k):
             #Should clamp this so it's the max of the difference logits or -k
             # values[f] = torch.clamp(measured_value, min=-k)
             values[f] = torch.max(measured_value, -k)
-            print(measured_value, values[f], -k)
+            # print(measured_value, values[f], -k)
 
         else:
             # measured_value = (output[f][indices[f].detach().cpu().numpy()[0]] - output[f][target[f].detach().cpu().numpy()])
@@ -148,7 +183,7 @@ def carliniwagner(output, target, k):
             #Clamp this so it's the max of the difference in logits or -k
             # values[f] = torch.clamp(measured_value, min=-k)
             values[f] = torch.max(measured_value, -k)
-            print(measured_value, values[f], -k)
+            # print(measured_value, values[f], -k)
     # print(values)
 
     #This isn't in the Carlini-Wagner attack but I did the mean of the CW result of each frame
@@ -177,10 +212,10 @@ def attack(delta, model, num_iterations, original, target, optimizer, loss, use_
 
 
             #Passing in 0.5( tanh(w) + 1) into the function
-            pass_in = 0.5 * (torch_arctanh(pass_in / 255.) + 1)
+            # pass_in = 0.5 * (torch_arctanh(pass_in / 255.) + 1)
 
             if i % 100 == 0:
-                plt.imshow(pass_in[0].detach().cpu().numpy())
+                plt.imshow(pass_in[0].detach().cpu().numpy()/255.)
                 plt.show()
 
 
@@ -191,8 +226,8 @@ def attack(delta, model, num_iterations, original, target, optimizer, loss, use_
             cost = carliniwagner(output, target, 1)
 
             # First take 0.5(tanh(w) + 1) - x
-            normterm = 0.5*((pass_in / 255.).tanh() + 1) - (original/255.)
-
+            # normterm = 0.5*((pass_in / 255.).tanh() + 1) - (original/255.)
+            normterm = (pass_in / 255.) - (original / 255.)
             # Then take the l2 norm of the mean difference
             normterm = normterm.mean(0).norm()
 
