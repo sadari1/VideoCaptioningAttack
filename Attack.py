@@ -73,7 +73,7 @@ class Attack:
 
         c = self.oracle.c
 
-
+        attack_algorithm = self.oracle.attack_algorithm
         # plt.imshow(frames[0])
         # plt.show()
 
@@ -105,10 +105,11 @@ class Attack:
 
             #Make this a part of the attack model.
 
-
-
-            cost, decoded, apply_delta, pass_in = self.oracle.costs_decoded(original)
+            cost, decoded, apply_delta, pass_in = self.oracle.costs_decoded(original, attack_algorithm)
             logger.info("Decoding at iteration {}: {} ".format(i, decoded))
+
+
+
 
             #Cost, decoded = self.oracle(
             #Instead of sents, maybe it's decoded (so action label becomes target label for example)
@@ -142,8 +143,8 @@ class Attack:
                 if not functional:
                     self.oracle.plt_collate_batch(pass_in / 255.)
 
-            # if i % 20 == 0:
-            #     plt_tensor(pass_in/255.)
+            if i % 50 == 0:
+                plt_tensor(pass_in/255.) if attack_algorithm == 'carliniwagner' else plt_tensor(pass_in/255.)
 
             # print("Norm:\t{}\t\tCost:\t{}".format(apply_delta.norm(), cost.data))
 
@@ -152,12 +153,28 @@ class Attack:
             #This can be left as is.
 
             # w and y make calculations more efficient and are used to calculate the l2 norm
-            y = torch_arctanh(original / 255.).cuda()
-            w = torch_arctanh(pass_in / 255.) - y
-            normterm = ((w+y).tanh() - y.tanh())
-            normterm = normterm.mean(0).norm()
-            print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
-            cost = cost + (c * normterm)
+
+            if attack_algorithm == 'carliniwagner':
+
+
+                # normterm = 0.5 * ((pass_in / 255.).tanh() + 1) - (original / 255.)
+                normterm = (pass_in/255.) - (original/255.)
+                # Then take the l2 norm of the mean difference
+                normterm = normterm.mean(0).norm()
+
+                print(normterm)
+                # normterm = normterm.pow(2)
+
+                cost = normterm + c * cost
+
+            else:
+
+                y = torch_arctanh(original / 255.).cuda()
+                w = torch_arctanh(pass_in / 255.) - y
+                normterm = ((w+y).tanh() - y.tanh())
+                normterm = normterm.mean(0).norm()
+                print("Cost:\t{}\t+\tNormterm:\t{}".format(cost, normterm))
+                cost = cost + (c * normterm)
 
             # calculate gradients
             self.oracle.optimizer.zero_grad()
@@ -177,6 +194,16 @@ class Attack:
 #     image_tensor = image_tensor.to(device)
 #     image_tensor = Variable(image_tensor)
 #     return image_tensor
+def plt_tensor(batched_t):
+    showing = batched_t[0]
+    if batched_t.shape[-1] == 3:
+        showing = showing.detach().cpu().numpy()
+    else:
+        showing = showing.permute(1, 2, 0).detach().cpu().numpy()
+
+    plt.imshow(showing)
+    plt.show()
+
 
 
 def torch_arctanh(x, eps=1e-6):

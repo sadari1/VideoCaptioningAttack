@@ -11,6 +11,9 @@ import subprocess
 
 # python process_frames.py "D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips" "D:\College\Research\2019 Video Captioning Attack Conference Paper\youtubeclips _processedframes" 0 1983
 
+
+#"D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips" "D:\College\Research\2019 Video Captioning Attack Conference Paper\youtubeclips _processedframes" 0 1983
+
 def main(args):
     src_dir = args.src_dir
     dst_dir = args.dst_dir

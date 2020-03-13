@@ -18,9 +18,11 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-available_features = ['nasnetalarge', 'resnet152', 'pnasnet5large', 'densenet121', 'senet154', 'polynet']
+available_features = ['nasnetalarge', 'resnet152', 'pnasnet5large', 'densenet121', 'senet154', 'polynet', 'vgg16']
 
 args = None
+
+#"D:\College\Research\2019 Video Captioning Attack Conference Paper\youtubeclips _processedframes" "D:\College\Research\2019 Video Captioning Attack Conference Paper\youtubeclips _processedfeatures_vgg16" --gpu_list 0 --type vgg16
 
 
 def init_model(gpu_ids, model_name):
@@ -144,6 +146,10 @@ def process_batches(batches, ftype, gpu_list, model, single_batch=True):
             rf = relu(output_features)
             avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
             out_feats = avg_pool(rf)
+
+#This is the input dimension size to use in the OPT, the larger size of the out_feats. VGG had [8, 4096], so 4096 was the one to use in the opt.
+        elif ftype == 'vgg16':
+            return output_features
         else:
             avg_pool = nn.AvgPool2d(conv_size, stride=1, padding=0)
             out_feats = avg_pool(output_features)

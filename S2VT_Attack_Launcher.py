@@ -15,6 +15,7 @@ from video_caption_pytorch.models.ConvS2VT import ConvS2VT
 from video_caption_pytorch.misc import utils as utils
 import math
 from Attack_Models.S2VT_Attack import S2VT_Attack
+import matplotlib.pyplot as plt
 import torch.optim as optim
 # from video_attack import CarliniAttack
 from torchvision import transforms
@@ -78,19 +79,24 @@ def main(opt):
     #config: batch_size, c, learning rate, num it,input shape
 
     config = {
-#lr 0.005 and dimensions 224, c was 100.
+#lr 0.005 and dimensions 224, c was 100. #Best was 0.06 lr, c = 1 for show and fool.
+        #
         "batch_size": BATCH_SIZE,
-        "c": 100,
-        "learning_rate": 0.02,
+        "c": 10000,
+        "learning_rate": 0.2,
         "num_iterations": 1000,
         "input_shape": (224, 224),
         "num_frames": 288,
-        "dimensions": 331
+        "dimensions": 224,
+        "k": 0.1,
+        # "attack_algorithm": "showandfool"
+        "attack_algorithm": "carliniwagner"
 
     }
 
+    convnet = 'vgg16'
     # convnet = 'nasnetalarge'
-    convnet = 'resnet152'
+    # convnet = 'resnet152'
     full_decoder = ConvS2VT(convnet, model, opt)
 
 
@@ -332,7 +338,8 @@ def main(opt):
         frames = skvideo.io.vread(adv_path)
 
         frames = np.float32(frames)
-
+        plt.imshow(frames[0]/255.)
+        plt.show()
 
         difference = np.array(adv_frames) - np.array(frames)
         np.save('difference_tmp', difference)

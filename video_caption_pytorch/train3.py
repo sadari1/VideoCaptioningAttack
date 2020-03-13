@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader
 
 python train3.py --recover_opt "D:/College/Research/December 2018 Video Captioning Attack/video captioner/save/msvd_nasnetalarge/opt_info.json"
 python train3.py --recover_opt "D:/College/Research/December 2018 Video Captioning Attack/video captioner/save/msvd_resnet152/opt_info.json"
+python train3.py --recover_opt "D:/College/Research/December 2018 Video Captioning Attack/video captioner/save/msvd_vgg16/opt_info.json"
 '''
 
 '''Trained for 1112 iterations, the loss is at: 8.82 to 10.22 to 11.39'''
@@ -77,9 +78,9 @@ def train(loader, model, crit, optimizer, lr_scheduler, opt, rl_crit=None):
 
         if epoch != 0 and epoch % opt["save_checkpoint_every"] == 0:
             model_path = os.path.join(opt["checkpoint_path"],
-                                      'resnet_model_%d.pth' % (epoch))
+                                      'vgg16_model_%d.pth' % (epoch))
             model_info_path = os.path.join(opt["checkpoint_path"],
-                                           'resnet_model_score.txt')
+                                           'vgg16_model_score.txt')
             torch.save(model.state_dict(), model_path)
             print("model saved to %s" % (model_path))
             with open(model_info_path, 'a') as f:
@@ -138,7 +139,7 @@ def main(opt):
         step_size=opt["learning_rate_decay_every"],
         gamma=opt["learning_rate_decay_rate"])
 
-    # model.load_state_dict(torch.load("C:\\Users\\Shumpu\\VideoCaptioningAttack\\video_caption_pytorch\\save\\model_1060.pth"))
+    model.load_state_dict(torch.load("C:\\Users\\Shumpu\\VideoCaptioningAttack\\video_caption_pytorch\\save\\vgg16_model_460.pth"))
     train(dataloader, model, crit, optimizer, exp_lr_scheduler, opt, rl_crit)
 
 

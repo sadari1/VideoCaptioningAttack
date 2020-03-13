@@ -23,7 +23,9 @@ class S2VT_Attack:
 
         self.video_path = video_path
         self.config = config
+        self.k = config["k"]
         self.batch_size = config["batch_size"]
+        self.attack_algorithm = config["attack_algorithm"]
         if window:
             self.frames = skvideo.io.vread(video_path,num_frames=config["num_frames"])[window[0]:window[-1] + 1]
         else:
@@ -80,6 +82,61 @@ class S2VT_Attack:
 
         return label.unsqueeze(0), mask.unsqueeze(0)
 
+    def detach(self, target):
+        return target.detach().cpu().numpy()
+
+    def CW_function(self, seq_probs, k):
+        tlabel, tmask = self.produce_t_mask()
+        tlabel = tlabel[:, 1:-1] #This makes it 26 in length to match outputs.
+
+        # Undo the log operation. This leaves us with softmax of the outputs of the last layer of decoder
+        seq_probs = torch.exp(seq_probs)
+
+        values, indices = torch.topk(seq_probs, 1)
+
+        values = values.reshape(1, values.shape[1])[0]
+        indices = indices.reshape(1, indices.shape[1])[0]
+
+        k = torch.Tensor([k]).cuda()
+
+
+        #Not dealing with multiple frame classifications so no need for a for loop.
+
+        if (self.detach(indices)[0] == self.detach(tlabel)[0]).all() == True:
+            new_values, new_indices = torch.topk(seq_probs, 2)
+            new_indices = [self.detach(new_indices[0][f][1]) for f in range(new_indices.shape[1])]
+            new_indices = np.array(new_indices).reshape(1, len(new_indices))[0]
+
+            new_values = [self.detach(new_values[0][f][1]) for f in range(new_values.shape[1])]
+            new_values = np.array(new_values).reshape(1, len(new_values))[0]
+
+            # It's new_values (2nd highest probabilities) - values since values is target's probabilities in this case
+            measured_value = torch.Tensor(new_values).cuda() - values
+
+            values = torch.max(measured_value, -k)
+            print(measured_value, values, -k)
+
+        else:
+            # Should be values (highest probabilities) - seq_probs[indices of target probabilities]
+
+            #Have to loop through torch.exp(seq_prob)[0] and find the target prob there.
+            # target_probs = []
+            # for f in range(seq_probs[0].shape[0]):
+            #     target_probs.append(seq_probs[0][f][tlabel[0][f]])
+
+            #Gets Z(x')t where t is target
+            target_probs = [(seq_probs[0][f][self.detach(tlabel)[0][f]]) for f in range(seq_probs[0].shape[0])]
+
+            # The maximum probabilities Z(x')i where i!= t  - Z(x')t where t is target
+            measured_value = values - torch.Tensor(target_probs).cuda()
+            # print("Values: {}\nTarget_Probs: {}\n".format(values, torch.Tensor(target_probs).cuda()))
+            # print(values, torch.Tensor(target_probs).cuda(), tmask[:, 1:-1])
+            values = torch.max(measured_value, -k)#* tmask[:, 1:-1].cuda()
+            # print("Measured_Value: {}\nValues: {}".format(measured_value, values))#, values, -k)
+        return values.sum()
+
+
+
 
     def original(self):
 
@@ -100,18 +157,59 @@ class S2VT_Attack:
         print('Target caption: ' + self.target)
         return original
 
-    def costs_decoded(self, original):
+    def costs_decoded(self, original, attack_algorithm):
+        def torch_arctanh(x, eps=1e-6):
+            x *= (1. - eps)
+            return (torch.log((1 + x) / (1 - x))) * 0.5
+
         apply_delta = torch.clamp(self.delta * 255., min=-self.dc, max=self.dc)
 
         # This too
         # The perturbation is applied to the original and resized through interpolation
         pass_in = torch.clamp(apply_delta + original, min=0, max=255)
 
-        # Put this in the function as well to decode at each iteration
-        batch = self.create_batches(pass_in)
-        feats = self.model.conv_forward(batch.unsqueeze(0))
-        seq_prob, seq_preds = self.model.encoder_decoder_forward(feats, mode='inference')
-        cost = self.loss(seq_prob=seq_prob)
+
+        # seq_prob is what's used for finding loss
+        # seq_preds is what's used to get a caption
+        # in the CNN CW, the function took the output and target. Output wasn't rounded there but it was rounded when checking for early stop.
+        # in other words, seq_probs isn't used in the CW attack, only the preds are.
+
+        # For target, use the produce_t_mask function and find tlabel. Then do tlabel[:, 1:] to get rid of <sos>.
+        # Then compare with seq_preds.
+
+
+        # seq prob is the result of taking the log softmax of the output probabilities. If you reverse the log and do e^seq_prob (torch.exp),
+        # you will get a 26x8582 (vocab size) multidim array.
+        # Each row of this array represents an index of the 26 length caption.
+        # Basically, the index of the maximum probability in this row is supposed to be the vocab token index of the final caption.
+
+        # If you want to convert seq_prob -> seq_pred, then you have: max_prob, index = torch.topk(torch.exp(seq_prob), 1).
+        # This will give you max_prob, or the maximum probabilities of the words, and index, which gives the vocab index tokens of the captions.
+
+
+        # So the method is passing in seq_prob and tlabel (cropped to 26 so get rid of last 0)
+        # From there, you find the topk. If the indices match the target's vocab token indices, then you maximize the 2nd highest
+        # probability.
+
+        # Otherwise, you max the top probability so that the index matches the target index.
+        if attack_algorithm == 'carliniwagner':
+            # pass_in = 0.5 * ((pass_in / 255.).tanh() + 1)
+            batch = self.create_batches(pass_in)
+            feats = self.model.conv_forward(batch.unsqueeze(0))
+            seq_prob, seq_preds = self.model.encoder_decoder_forward(feats, mode='inference')
+
+            #Don't have to pass in target since it's passed onto this attack
+            cost = self.CW_function(seq_prob, self.k)
+
+
+        else:
+
+            # Put this in the function as well to decode at each iteration
+            batch = self.create_batches(pass_in)
+            feats = self.model.conv_forward(batch.unsqueeze(0))
+            seq_prob, seq_preds = self.model.encoder_decoder_forward(feats, mode='inference')
+            cost = self.loss(seq_prob=seq_prob)
+
         sents = self.seq_decoder(self.vocab, seq_preds)
 
         return cost, sents[0], apply_delta, pass_in

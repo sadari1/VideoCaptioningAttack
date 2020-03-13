@@ -13,6 +13,7 @@ import os
 import argparse
 import skvideo.io
 import torch
+import numpy as np
 import PIL
 from video_caption_pytorch.models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
 from video_caption_pytorch.dataloader import VideoDataset
@@ -75,10 +76,11 @@ def main(opt):
     #     model = nn.DataParallel(model)
 
     # convnet = 'nasnetalarge'
-    convnet = 'resnet152'
+    # convnet = 'resnet152'
+    convnet = 'vgg16'
     vocab = dataset.get_vocab()
     full_decoder = ConvS2VT(convnet, model, opt)
-
+#D:\College\Research\December 2018 Video Captioning Attack\video captioner\YouTubeClips\CNN_SaYwh6chmiw_15_40.npy
     videos = {
 
         # 1: 'RSx5G0_xH48_12_17.avi',
@@ -98,8 +100,14 @@ def main(opt):
     #video_path = 'D:\\College\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\ACOmKiJDkA4_49_54.avi'
     # video_path = opt['videos'][0]
 
-    video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\' + \
-                 videos[2]
+    # video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\' + \
+    #              videos[2]
+
+    video_path = 'D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\vgg16Adversarial_SaYwh6chmiw_15_40.avi'
+
+    numpy_path = "D:\\College\\Research\\December 2018 Video Captioning Attack\\video captioner\\YouTubeClips\\vgg16CNN_SaYwh6chmiw_15_40.npy"
+    adv_frames = np.load(numpy_path)
+
 
     tf_img_fn = ptm_utils.TransformImage(full_decoder.conv)
     load_img_fn = PIL.Image.fromarray
@@ -109,7 +117,7 @@ def main(opt):
         frames = skvideo.io.vread(video_path)
         print("Total frames: {}".format(len(frames)))
         # print(frames[[0, 1, 2, 3, 4, 5]].shape)
-        plt.imshow(frames[0])
+        plt.imshow(frames[0]*255.)
         plt.show()
 
 
@@ -121,8 +129,18 @@ def main(opt):
         print(sents[0])
 
 
+        np_frames = adv_frames.astype(np.uint8)
+        print("Numpy CNN frames \nTotal frames: {}".format(len(np_frames)))
+        # print(frames[[0, 1, 2, 3, 4, 5]].shape)
+        plt.imshow(np_frames[0]*255.)
+        plt.show()
 
+        # bp ---
+        batches = create_batches(np_frames, load_img_fn, tf_img_fn)
+        seq_prob, seq_preds = full_decoder(batches, mode='inference')
+        sents = utils.decode_sequence(vocab, seq_preds)
 
+        print(sents[0])
 
 
 if __name__ == '__main__':

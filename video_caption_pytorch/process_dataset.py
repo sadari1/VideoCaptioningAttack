@@ -10,7 +10,13 @@ import argparse
 import re
 import json
 
+'''
+--gtdict
+"D:\College\Research\2019 Video Captioning Attack Conference Paper\youtube2text_preprocessed_for_arctic_capgen_vid\youtube2text_iccv15\dict_movieID_caption.pkl"
+--out_json_basepath
+"D:\College\Research\2019 Video Captioning Attack Conference Paper\vgg16_dataset_"
 
+'''
 
 def main(args):
     dict_path = args.gtdict
